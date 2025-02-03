@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
+import { RolesGuard } from './auth/role/roles.guard';
 import { GradeModule } from './grade/grade.module';
 import { ObjectionModule } from './objection/objection.module';
-import { UserModule } from './user/user.module';
-import { APP_GUARD } from '@nestjs/core';
-import { RolesGuard } from './auth/role/roles.guard';
+import { UserModule } from './user/users.module';
 
 @Module({
   imports: [
@@ -26,6 +27,10 @@ import { RolesGuard } from './auth/role/roles.guard';
     GradeModule,
     ObjectionModule,
     AuthModule,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: '1h' },
+    }),
   ],
   providers: [
     {
