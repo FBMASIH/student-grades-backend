@@ -1,13 +1,13 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Patch,
-  Body,
   Param,
+  Patch,
+  Post,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { ObjectionService } from './objection.service';
 
 @Controller('objections')
@@ -19,7 +19,7 @@ export class ObjectionController {
   submitObjection(
     @Body()
     objectionDto: {
-      gradeId: number;
+      courseId: number;
       studentId: number;
       reason: string;
     },

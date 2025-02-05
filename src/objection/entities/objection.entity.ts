@@ -1,14 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
-import { Grade } from '../../grade/entities/grade.entity';
-import { User } from '../../user/entities/user.entity';
+import { Course } from 'src/course/entities/course.entity';
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { User } from '../../users/entities/user.entity';
 
 @Entity()
 export class Objection {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Grade)
-  grade: Grade;
+  @ManyToOne(() => Course)
+  course: Course;
 
   @ManyToOne(() => User)
   student: User;

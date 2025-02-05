@@ -11,17 +11,17 @@ export class ObjectionService {
   ) {}
 
   async submitObjection({
-    gradeId,
+    courseId,
     studentId,
     reason,
   }: {
-    gradeId: number;
+    courseId: number;
     studentId: number;
     reason: string;
   }) {
     const objection = this.objectionRepository.create({
-      grade: {id: gradeId},
-      student: {id: studentId},
+      course: { id: courseId },
+      student: { id: studentId },
       reason,
     });
     return await this.objectionRepository.save(objection);
@@ -32,7 +32,9 @@ export class ObjectionService {
   }
 
   async resolveObjection(id: number) {
-    const objection = await this.objectionRepository.findOne({ where: { id : id } });
+    const objection = await this.objectionRepository.findOne({
+      where: { id: id },
+    });
     if (!objection) throw new NotFoundException('اعتراض یافت نشد.');
     await this.objectionRepository.remove(objection);
     return { message: 'اعتراض با موفقیت بررسی و حذف شد.' };

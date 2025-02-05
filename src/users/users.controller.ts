@@ -1,26 +1,24 @@
 import {
-  Controller,
-  Post,
+  BadRequestException,
   Body,
+  Controller,
+  Delete,
   Get,
   Param,
+  Patch,
+  Post,
+  Req,
+  UploadedFile,
   UseGuards,
   UseInterceptors,
-  UploadedFile,
-  Patch,
-  Delete,
-  Req,
-  BadRequestException,
 } from '@nestjs/common';
-import { User, UserRole } from './entities/user.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-
 import { Request } from 'express';
-import { UsersService } from './users.service';
-import { Roles } from 'src/auth/role/roles.decorator';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { HasRoles } from 'src/auth/role/roles.decorator';
 import { RolesGuard } from 'src/auth/role/roles.guard';
-
+import { User, UserRole } from './entities/user.entity';
+import { UsersService } from './users.service';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -33,24 +31,21 @@ export class UsersController {
     return this.usersService.createUser(body.username, body.password);
   }
 
-  // دریافت پروفایل کاربر (برای همه کاربران)
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async getProfile(@Req() req: Request) {
     return req['user'];
   }
 
-  // مدیریت کاربران برای مدیر کل
+  @HasRoles(UserRole.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
   @Get()
-  async getAllUsers() {
+  async getAllUsers(@Req() req: Request) {
     return this.usersService.findAll();
   }
 
-  // ایجاد کاربر به صورت دستی توسط مدیر کل (با انتخاب نقش)
+  @HasRoles(UserRole.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
   @Post('manual')
   async createUserManual(
     @Body()
@@ -68,24 +63,24 @@ export class UsersController {
   }
 
   // تغییر نقش کاربر توسط مدیر کل
+  @HasRoles(UserRole.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
   @Patch(':id/role')
   async updateUserRole(@Param('id') id: number, @Body('role') role: UserRole) {
     return this.usersService.updateUserRole(id, role);
   }
 
   // حذف کاربر توسط مدیر کل
+  @HasRoles(UserRole.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
   @Delete(':id')
   async deleteUser(@Param('id') id: number) {
     return this.usersService.deleteUser(id);
   }
 
   // آپلود فایل اکسل برای وارد کردن کاربران توسط مدیر کل
+  @HasRoles(UserRole.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadUsers(
@@ -93,5 +88,24 @@ export class UsersController {
     @Req() req: Request,
   ) {
     return this.usersService.importUsersFromExcel(file);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id')
+  async updateUser(
+    @Param('id') id: number,
+    @Body() updateData: { username?: string; password?: string; role?: UserRole },
+    @Req() req: Request,
+  ) {
+    const currentUser = req.user as User;
+    if (
+      !currentUser ||
+      (currentUser.role !== UserRole.ADMIN && currentUser.id !== id)
+    ) {
+      throw new BadRequestException(
+        'شما مجاز به تغییر اطلاعات این کاربر نیستید',
+      );
+    }
+    return this.usersService.updateUser(id, updateData, currentUser);
   }
 }

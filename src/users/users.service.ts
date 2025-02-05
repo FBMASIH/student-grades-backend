@@ -109,4 +109,46 @@ export class UsersService {
     }
     return { message: 'کاربران با موفقیت وارد شدند.' };
   }
+
+  async updateUser(
+    id: number,
+    data: { username?: string; password?: string; role?: UserRole },
+    currentUser: User,
+  ) {
+    if (!data || Object.keys(data).length === 0) {
+      throw new BadRequestException('هیچ داده‌ای برای بروزرسانی ارائه نشده است');
+    }
+
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new BadRequestException('کاربر پیدا نشد');
+    }
+
+    // Only check for existing username if username is being updated and not null/empty
+    if (data.username?.trim()) {
+      const existingUser = await this.usersRepository.findOne({
+        where: { username: data.username },
+      });
+      if (existingUser && existingUser.id !== id) {
+        throw new BadRequestException('این نام کاربری قبلاً استفاده شده است');
+      }
+      user.username = data.username;
+    }
+
+    // Only update password if it's provided and not empty
+    if (data.password?.trim()) {
+      user.password = await bcrypt.hash(data.password, 10);
+    }
+
+    // Only update role if it's provided and valid
+    if (data.role && Object.values(UserRole).includes(data.role)) {
+      if (currentUser.role !== UserRole.ADMIN) {
+        throw new BadRequestException('فقط ادمین می‌تواند نقش را تغییر دهد');
+      }
+      user.role = data.role;
+    }
+
+    await this.usersRepository.save(user);
+    return { message: 'اطلاعات کاربر با موفقیت بروزرسانی شد' };
+  }
 }

@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
-import { RolesGuard } from './auth/role/roles.guard';
-import { GradeModule } from './grade/grade.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { CourseModule } from './course/course.module';
 import { ObjectionModule } from './objection/objection.module';
-import { UserModule } from './user/users.module';
+import { UserModule } from './users/users.module';
+import { CourseGroupsModule } from './course-groups/course-groups.module';
 
 @Module({
   imports: [
@@ -18,24 +18,21 @@ import { UserModule } from './user/users.module';
       port: parseInt(process.env.DB_PORT ?? '3306'),
       username: process.env.DB_USER || 'root',
       password: process.env.DB_PASS || '',
-      database: process.env.DB_NAME || 'student_grades',
+      database: process.env.DB_NAME || 'student_courses',
       autoLoadEntities: true,
       synchronize: true,
     }),
 
     UserModule,
-    GradeModule,
+    CourseModule,
     ObjectionModule,
     AuthModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET,
-      signOptions: { expiresIn: '1h' },
-    }),
+    CourseGroupsModule,
   ],
   providers: [
     {
       provide: APP_GUARD,
-      useClass: RolesGuard,
+      useClass: JwtAuthGuard,
     },
   ],
 })
