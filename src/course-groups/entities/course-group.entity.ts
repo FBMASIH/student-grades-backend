@@ -1,9 +1,17 @@
-import { Column, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
+import {
+  Column,
+  Entity,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  Unique,
+} from 'typeorm';
 import { Course } from '../../course/entities/course.entity';
 import { Enrollment } from '../../enrollment/entities/enrollment.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity()
+@Unique(['groupNumber'])
 export class CourseGroup {
   @PrimaryGeneratedColumn()
   id: number;
@@ -14,7 +22,7 @@ export class CourseGroup {
   @Column()
   capacity: number;
 
-  @Column()
+  @Column({ default: 0 })
   currentEnrollment: number;
 
   @ManyToOne(() => Course)
@@ -23,6 +31,6 @@ export class CourseGroup {
   @ManyToOne(() => User)
   professor: User;
 
-  @OneToMany(() => Enrollment, enrollment => enrollment.group)
+  @OneToMany(() => Enrollment, (enrollment) => enrollment.group)
   enrollments: Enrollment[];
 }

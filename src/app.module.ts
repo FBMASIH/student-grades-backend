@@ -8,6 +8,7 @@ import { CourseModule } from './course/course.module';
 import { ObjectionModule } from './objection/objection.module';
 import { UserModule } from './users/users.module';
 import { CourseGroupsModule } from './course-groups/course-groups.module';
+import { EnrollmentModule } from './enrollment/enrollment.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { CourseGroupsModule } from './course-groups/course-groups.module';
     ObjectionModule,
     AuthModule,
     CourseGroupsModule,
+    EnrollmentModule,
   ],
   providers: [
     {

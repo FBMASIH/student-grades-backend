@@ -10,8 +10,17 @@ export class Course {
   name: string;
 
   @Column()
+  code: string;
+
+  @Column()
+  units: number;
+
+  @Column({ nullable: true })
+  department: string;
+
+  @Column()
   subject: string;
 
-  @OneToMany(() => CourseGroup, group => group.course)
+  @OneToMany(() => CourseGroup, (group) => group.course)
   groups: CourseGroup[];
 }

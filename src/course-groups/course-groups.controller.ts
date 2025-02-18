@@ -1,8 +1,18 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CourseGroupsService } from './course-groups.service';
 import { CreateCourseGroupDto } from './dto/create-course-group.dto';
 import { UpdateCourseGroupDto } from './dto/update-course-group.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('course-groups')
 @UseGuards(JwtAuthGuard)
@@ -22,9 +32,21 @@ export class CourseGroupsController {
     return this.courseGroupsService.enrollStudent(+groupId, +studentId);
   }
 
+  @Post(':groupId/students')
+  async addStudents(
+    @Param('groupId') groupId: string,
+    @Body() data: { studentIds: number[] },
+  ) {
+    return this.courseGroupsService.addStudents(+groupId, data.studentIds);
+  }
+
   @Get()
-  findAll() {
-    return this.courseGroupsService.findAll();
+  findAll(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+  ) {
+    return this.courseGroupsService.findAll(page, limit, search);
   }
 
   @Get(':id')
@@ -37,8 +59,21 @@ export class CourseGroupsController {
     return this.courseGroupsService.findAvailableGroups(+courseId);
   }
 
+  @Get(':groupId/students')
+  async getGroupStudents(@Param('groupId') groupId: string) {
+    return this.courseGroupsService.getGroupStudents(+groupId);
+  }
+
+  @Get(':groupId/students-status')
+  async getGroupStudentsStatus(@Param('groupId') groupId: string) {
+    return this.courseGroupsService.getGroupStudentsStatus(+groupId);
+  }
+
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateCourseGroupDto: UpdateCourseGroupDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateCourseGroupDto: UpdateCourseGroupDto,
+  ) {
     return this.courseGroupsService.update(+id, updateCourseGroupDto);
   }
 

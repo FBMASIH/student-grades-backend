@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import * as ExcelJS from 'exceljs';
 import { Repository } from 'typeorm';
+import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { User, UserRole } from './entities/user.entity';
 
 @Injectable()
@@ -12,8 +13,38 @@ export class UsersService {
     private usersRepository: Repository<User>,
   ) {}
 
-  async findAll() {
-    return this.usersRepository.find({ select: ['id', 'username', 'role'] });
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    search: string = '',
+    role?: UserRole,
+  ): Promise<PaginatedResponse<User>> {
+    const skip = (page - 1) * limit;
+    const query = this.usersRepository
+      .createQueryBuilder('user')
+      .select(['user.id', 'user.username', 'user.role'])
+      .skip(skip)
+      .take(limit);
+
+    if (search) {
+      query.andWhere('user.username LIKE :search', { search: `%${search}%` });
+    }
+
+    if (role) {
+      query.andWhere('user.role = :role', { role });
+    }
+
+    const [users, total] = await query.getManyAndCount();
+
+    return {
+      items: users,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   // در این متد اگر role داده نشود، پیش‌فرض STUDENT است.
@@ -116,7 +147,9 @@ export class UsersService {
     currentUser: User,
   ) {
     if (!data || Object.keys(data).length === 0) {
-      throw new BadRequestException('هیچ داده‌ای برای بروزرسانی ارائه نشده است');
+      throw new BadRequestException(
+        'هیچ داده‌ای برای بروزرسانی ارائه نشده است',
+      );
     }
 
     const user = await this.usersRepository.findOne({ where: { id } });

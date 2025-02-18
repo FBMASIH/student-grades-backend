@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -40,8 +41,13 @@ export class UsersController {
   @HasRoles(UserRole.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Get()
-  async getAllUsers(@Req() req: Request) {
-    return this.usersService.findAll();
+  async getAllUsers(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Query('search') search: string = '',
+    @Query('role') role?: UserRole,
+  ) {
+    return this.usersService.findAll(page, limit, search, role);
   }
 
   @HasRoles(UserRole.ADMIN)
@@ -94,7 +100,8 @@ export class UsersController {
   @Patch(':id')
   async updateUser(
     @Param('id') id: number,
-    @Body() updateData: { username?: string; password?: string; role?: UserRole },
+    @Body()
+    updateData: { username?: string; password?: string; role?: UserRole },
     @Req() req: Request,
   ) {
     const currentUser = req.user as User;
