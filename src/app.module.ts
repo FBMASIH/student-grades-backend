@@ -9,6 +9,7 @@ import { ObjectionModule } from './objection/objection.module';
 import { UserModule } from './users/users.module';
 import { CourseGroupsModule } from './course-groups/course-groups.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
+import { TicketsModule } from './tickets/tickets.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { EnrollmentModule } from './enrollment/enrollment.module';
 
     UserModule,
     CourseModule,
+    TicketsModule,
     ObjectionModule,
     AuthModule,
     CourseGroupsModule,

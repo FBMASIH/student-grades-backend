@@ -72,4 +72,9 @@ export class CourseController {
   getProfessorCourses(@Param('id') professorId: number) {
     return this.coursesService.getProfessorCourses(professorId);
   }
+
+  @Get('teacher/:id/details')
+  async getTeacherCoursesDetails(@Param('id') teacherId: number) {
+    return this.coursesService.getTeacherCoursesDetails(teacherId);
+  }
 }

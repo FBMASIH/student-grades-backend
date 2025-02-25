@@ -18,4 +18,7 @@ export class Objection {
 
   @Column({ default: false })
   resolved: boolean;
+
+  @Column({ nullable: true })
+  response: string;
 }

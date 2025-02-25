@@ -39,4 +39,30 @@ export class ObjectionService {
     await this.objectionRepository.remove(objection);
     return { message: 'اعتراض با موفقیت بررسی و حذف شد.' };
   }
+
+  async getTeacherObjections(teacherId: number) {
+    return await this.objectionRepository
+      .createQueryBuilder('objection')
+      .leftJoinAndSelect('objection.course', 'course')
+      .leftJoinAndSelect('objection.student', 'student')
+      .leftJoin('course.groups', 'groups')
+      .where('groups.professorId = :teacherId', { teacherId })
+      .getMany();
+  }
+
+  async respondToObjection(id: number, response: string) {
+    const objection = await this.objectionRepository.findOne({
+      where: { id },
+    });
+
+    if (!objection) {
+      throw new NotFoundException('اعتراض یافت نشد.');
+    }
+
+    objection.response = response;
+    objection.resolved = true;
+    await this.objectionRepository.save(objection);
+
+    return { message: 'پاسخ با موفقیت ثبت شد.' };
+  }
 }

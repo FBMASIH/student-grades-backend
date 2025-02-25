@@ -38,4 +38,19 @@ export class ObjectionController {
   resolveObjection(@Param('id') id: number) {
     return this.objectionService.resolveObjection(id);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('teacher/:teacherId')
+  getTeacherObjections(@Param('teacherId') teacherId: number) {
+    return this.objectionService.getTeacherObjections(teacherId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/respond')
+  respondToObjection(
+    @Param('id') id: number,
+    @Body() { response }: { response: string },
+  ) {
+    return this.objectionService.respondToObjection(id, response);
+  }
 }

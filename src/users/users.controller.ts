@@ -20,6 +20,7 @@ import { HasRoles } from 'src/auth/role/roles.decorator';
 import { RolesGuard } from 'src/auth/role/roles.guard';
 import { User, UserRole } from './entities/user.entity';
 import { UsersService } from './users.service';
+import { get } from 'http';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -27,9 +28,20 @@ export class UsersController {
   // ثبت‌نام برای کاربران (همیشه نقش STUDENT)
   @Post('register')
   async register(
-    @Body() body: { username: string; password: string },
+    @Body()
+    body: {
+      username: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+    },
   ): Promise<User> {
-    return this.usersService.createUser(body.username, body.password);
+    return this.usersService.createUser(
+      body.username,
+      body.password,
+      body.firstName,
+      body.lastName,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -58,12 +70,16 @@ export class UsersController {
     body: {
       username: string;
       password: string;
+      firstName: string;
+      lastName: string;
       role: UserRole;
     },
   ): Promise<User> {
     return this.usersService.createUser(
       body.username,
       body.password,
+      body.firstName,
+      body.lastName,
       body.role,
     );
   }
@@ -84,16 +100,26 @@ export class UsersController {
     return this.usersService.deleteUser(id);
   }
 
-  // آپلود فایل اکسل برای وارد کردن کاربران توسط مدیر کل
   @HasRoles(UserRole.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Post('upload')
+  @Post('upload-excel')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadUsers(
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request,
-  ) {
-    return this.usersService.importUsersFromExcel(file);
+  async uploadExcelUsers(@UploadedFile() file: Express.Multer.File) {
+    return this.usersService.importUsersWithResponseFromExcel(file);
+  }
+
+  @HasRoles(UserRole.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Post('delete-multiple')
+  async deleteMultipleUsers(@Body() data: { userIds: number[] }) {
+    return this.usersService.deleteMultipleUsers(data.userIds);
+  }
+
+  @HasRoles(UserRole.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('delete-students')
+  async deleteAllStudents() {
+    return this.usersService.deleteAllStudents();
   }
 
   @UseGuards(JwtAuthGuard)

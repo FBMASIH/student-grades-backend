@@ -202,4 +202,36 @@ export class CourseService {
 
     return groups;
   }
+
+  async getTeacherCoursesDetails(teacherId: number) {
+    const courses = await this.courseRepository
+      .createQueryBuilder('course')
+      .leftJoinAndSelect('course.groups', 'group')
+      .leftJoinAndSelect('group.enrollments', 'enrollment')
+      .leftJoinAndSelect('enrollment.student', 'student')
+      .where('group.professorId = :teacherId', { teacherId })
+      .andWhere('enrollment.isActive = :isActive', { isActive: true })
+      .getMany();
+
+    return {
+      courses: courses.map((course) => ({
+        id: course.id,
+        name: course.name,
+        code: course.code,
+        units: course.units,
+        groups: course.groups.map((group) => ({
+          id: group.id,
+          groupNumber: group.groupNumber,
+          enrollmentCount: group.enrollments.length,
+          students: group.enrollments.map((enrollment) => ({
+            id: enrollment.student.id,
+            username: enrollment.student.username,
+            firstName: enrollment.student.firstName,
+            lastName: enrollment.student.lastName,
+            score: enrollment.score,
+          })),
+        })),
+      })),
+    };
+  }
 }
