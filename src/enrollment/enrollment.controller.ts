@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UnauthorizedException,
@@ -33,7 +35,7 @@ export class EnrollmentController {
 
   @Post()
   enrollStudent(
-    @Body() enrollmentData: { studentId: number; groupId: number },
+    @Body() enrollmentData: { studentId: number; courseId: number },
     @Req() request: RequestWithUser,
   ) {
     if (!request.user?.id) {
@@ -41,15 +43,14 @@ export class EnrollmentController {
     }
     return this.enrollmentService.enrollStudent(
       enrollmentData.studentId,
-      enrollmentData.groupId,
+      enrollmentData.courseId,
       request.user.id,
     );
   }
 
-  @Post('groups/:groupId/students')
-  @UseGuards(JwtAuthGuard)
+  @Post('courses/:courseId/students')
   async enrollMultipleStudents(
-    @Param('groupId', ParseIntPipe) groupId: number,
+    @Param('courseId', ParseIntPipe) courseId: number,
     @Body() data: { usernames: string[] },
     @Req() request: RequestWithUser,
   ) {
@@ -57,37 +58,65 @@ export class EnrollmentController {
       throw new UnauthorizedException('User not authenticated');
     }
     return this.enrollmentService.enrollMultipleStudents(
-      groupId,
+      courseId,
       data.usernames,
       request.user.id,
     );
   }
 
-  @Post('group/:groupId/scores')
-  async updateGroupScores(
-    @Param('groupId', ParseIntPipe) groupId: number,
+  @Post('course/:courseId/scores')
+  async updateCourseScores(
+    @Param('courseId', ParseIntPipe) courseId: number,
     @Body() data: { scores: { studentId: number; score: number }[] },
   ) {
-    return this.enrollmentService.updateGroupScores(groupId, data.scores);
+    return this.enrollmentService.updateCourseScores(courseId, data.scores);
   }
 
   @Patch(':id/grade')
-  submitGrade(@Param('id') id: string, @Body() gradeData: { score: number }) {
-    return this.enrollmentService.submitGrade(+id, gradeData.score);
+  submitGrade(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() gradeData: { score: number },
+  ) {
+    return this.enrollmentService.submitGrade(id, gradeData.score);
+  }
+
+  @Post(':id/score')
+  async submitScore(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: { score: number },
+  ) {
+    if (data.score < 0 || data.score > 100) {
+      throw new BadRequestException('Score must be between 0 and 100');
+    }
+    return this.enrollmentService.updateScore(id, data.score);
+  }
+
+  @Post('scores/bulk')
+  async bulkUpdateScores(
+    @Body() data: { scores: Array<{ enrollmentId: number; score: number }> },
+  ) {
+    return this.enrollmentService.bulkUpdateScores(data.scores);
+  }
+
+  @Get('student/:id/details')
+  async getStudentEnrollmentDetails(
+    @Param('id', ParseIntPipe) studentId: number,
+  ) {
+    return this.enrollmentService.getStudentEnrollmentDetails(studentId);
   }
 
   @Get('student/:id')
   getStudentEnrollments(
-    @Param('id') studentId: string,
+    @Param('id', ParseIntPipe) studentId: number,
   ): Promise<EnrollmentResponse[]> {
-    return this.enrollmentService.getStudentEnrollments(+studentId);
+    return this.enrollmentService.getStudentEnrollments(studentId);
   }
 
-  @Get('group/:id')
-  getGroupEnrollments(
-    @Param('id') groupId: string,
+  @Get('course/:id')
+  getCourseEnrollments(
+    @Param('id', ParseIntPipe) courseId: number,
   ): Promise<EnrollmentResponse[]> {
-    return this.enrollmentService.getGroupEnrollments(+groupId);
+    return this.enrollmentService.getCourseEnrollments(courseId);
   }
 
   @Get()
@@ -115,7 +144,18 @@ export class EnrollmentController {
   }
 
   @Delete(':id')
-  async deleteEnrollment(@Param('id') id: string) {
-    return await this.enrollmentService.deleteEnrollment(+id);
+  async deleteEnrollment(@Param('id', ParseIntPipe) id: number) {
+    return await this.enrollmentService.deleteEnrollment(id);
+  }
+
+  @Put(':id/score')
+  async updateScore(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('score', new ParseIntPipe()) score: number,
+  ) {
+    if (score < 0 || score > 100) {
+      throw new BadRequestException('Score must be between 0 and 100');
+    }
+    return this.enrollmentService.updateScore(id, score);
   }
 }

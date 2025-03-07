@@ -172,6 +172,7 @@ export class CourseGroupsService {
       .leftJoinAndSelect('enrollment.student', 'student')
       .where('group.id = :groupId', { groupId })
       .andWhere('enrollment.isActive = :isActive', { isActive: true })
+      .andWhere('student.isActive = :isActive', { isActive: true }) // Add this line
       .getOne();
 
     if (!group) {
@@ -199,35 +200,41 @@ export class CourseGroupsService {
       throw new NotFoundException('گروه درسی یافت نشد');
     }
 
-    // Get enrollments separately
+    // Get enrollments separately with active students only
     const enrollments = await this.courseGroupRepository
       .createQueryBuilder('group')
       .leftJoinAndSelect('group.enrollments', 'enrollment')
       .leftJoinAndSelect('enrollment.student', 'student')
       .where('group.id = :groupId', { groupId })
       .andWhere('enrollment.isActive = :isActive', { isActive: true })
+      .andWhere('student.isActive = :studentActive', { studentActive: true })
       .getOne();
 
-    // Get all students with STUDENT role
+    // Get only active students with STUDENT role
     const allStudents = await this.userRepository.find({
-      where: { role: UserRole.STUDENT },
+      where: {
+        role: UserRole.STUDENT,
+        isActive: true, // Add this line to only get active students
+      },
       select: ['id', 'username'],
     });
 
-    // Initialize empty Set for enrolled students
-    const enrolledStudentIds = new Set(
-      enrollments?.enrollments?.map((e) => e.student?.id) || [],
-    );
-
-    // Get students in other groups
+    // Get active students in other groups
     const studentsInOtherGroups = await this.courseGroupRepository
       .createQueryBuilder('group')
       .select('DISTINCT enrollment.studentId', 'studentId')
       .innerJoin('group.enrollments', 'enrollment')
+      .innerJoin('enrollment.student', 'student') // Add this join
       .where('group.courseId = :courseId', { courseId: group.courseId })
       .andWhere('group.id != :groupId', { groupId })
       .andWhere('enrollment.isActive = true')
+      .andWhere('student.isActive = true') // Add this condition
       .getRawMany();
+
+    // Rest of the code remains the same
+    const enrolledStudentIds = new Set(
+      enrollments?.enrollments?.map((e) => e.student?.id) || [],
+    );
 
     const otherGroupStudentIds = new Set(
       studentsInOtherGroups?.map((s) => s.studentId) || [],

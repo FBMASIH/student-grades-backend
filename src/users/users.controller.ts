@@ -20,7 +20,7 @@ import { HasRoles } from 'src/auth/role/roles.decorator';
 import { RolesGuard } from 'src/auth/role/roles.guard';
 import { User, UserRole } from './entities/user.entity';
 import { UsersService } from './users.service';
-import { get } from 'http';
+
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -140,5 +140,16 @@ export class UsersController {
       );
     }
     return this.usersService.updateUser(id, updateData, currentUser);
+  }
+
+  @Get('students/search')
+  @UseGuards(JwtAuthGuard)
+  async searchStudents(@Query('q') query: string) {
+    if (!query || query.length < 2) {
+      throw new BadRequestException(
+        'Search query must be at least 2 characters',
+      );
+    }
+    return this.usersService.searchStudents(query);
   }
 }

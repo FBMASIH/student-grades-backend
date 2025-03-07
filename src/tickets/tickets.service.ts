@@ -1,9 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { User } from 'src/users/entities/user.entity';
+import { User, UserRole } from 'src/users/entities/user.entity';
 import { Repository } from 'typeorm';
-import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { Comment } from './entities/comment.entity';
@@ -88,22 +87,76 @@ export class TicketsService {
     await this.ticketRepository.softRemove(ticket);
   }
 
-  async addComment(
-    ticketId: number,
-    createCommentDto: CreateCommentDto,
-    userId: number,
-  ) {
-    const ticket = await this.findOne(ticketId);
+  async addComment(ticketId: number, userId: number, text: string) {
+    return await this.ticketRepository.manager.transaction(async (manager) => {
+      const ticket = await manager.findOne(Ticket, {
+        where: { id: ticketId },
+        relations: ['createdBy'],
+      });
 
-    const comment = this.commentRepository.create({
-      text: createCommentDto.text,
-      ticket,
-      createdBy: { id: userId } as User,
+      if (!ticket) {
+        throw new NotFoundException('تیکت یافت نشد');
+      }
+
+      const user = await manager.findOne(User, {
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new NotFoundException('کاربر یافت نشد');
+      }
+
+      const comment = manager.create(Comment, {
+        text,
+        ticket,
+        user,
+        createdBy: user,
+      });
+
+      await manager.save(comment);
+
+      // Mark ticket as responded if admin replies
+      if (user.role === UserRole.ADMIN) {
+        ticket.responded = true;
+        await manager.save(ticket);
+      }
+
+      return comment;
     });
+  }
 
-    const savedComment = await this.commentRepository.save(comment);
-
-    return savedComment;
+  async getTickets() {
+    return await this.ticketRepository.find({
+      relations: {
+        createdBy: true,
+        comments: {
+          user: true,
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        createdAt: true,
+        responded: true,
+        comments: {
+          id: true,
+          text: true,
+          createdAt: true,
+          user: {
+            id: true,
+            username: true,
+            role: true,
+          },
+        },
+      },
+      order: {
+        createdAt: 'DESC',
+        comments: {
+          createdAt: 'ASC',
+        },
+      },
+    });
   }
 
   async getComments(ticketId: number) {

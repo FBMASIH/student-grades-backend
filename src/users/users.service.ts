@@ -1,10 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { Repository } from 'typeorm';
+import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
+import { Brackets, Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { User, UserRole } from './entities/user.entity';
-import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
 
 @Injectable()
 export class UsersService {
@@ -98,20 +102,31 @@ export class UsersService {
         throw new NotFoundException('کاربر پیدا نشد');
       }
 
-      // Delete all enrollments where the user is a student
+      // Deactivate all enrollments where the user is a student
       if (user.enrollments?.length > 0) {
-        await manager.delete(Enrollment, { student: { id } });
+        await manager.update(
+          Enrollment,
+          { student: { id } },
+          { isActive: false },
+        );
       }
 
-      // Delete all enrollments created by the user
+      // Deactivate all enrollments created by the user
       if (user.createdEnrollments?.length > 0) {
-        await manager.delete(Enrollment, { createdBy: { id } });
+        await manager.update(
+          Enrollment,
+          { createdBy: { id } },
+          { isActive: false },
+        );
       }
 
-      // Finally, delete the user
-      await manager.delete(User, { id });
+      // Deactivate user instead of deleting
+      user.isActive = false;
+      await manager.save(user);
 
-      return { message: 'کاربر و تمام وابستگی‌های مربوطه با موفقیت حذف شدند' };
+      return {
+        message: 'کاربر و تمام وابستگی‌های مربوطه با موفقیت غیرفعال شدند',
+      };
     });
   }
 
@@ -325,10 +340,12 @@ export class UsersService {
     await this.usersRepository.manager.transaction(async (manager) => {
       for (const student of students) {
         try {
-          // Check active enrollments
-          if (student.enrollments?.some((e) => e.isActive)) {
-            throw new Error('این دانشجو دارای ثبت‌نام‌های فعال است');
-          }
+          // Deactivate all enrollments for this student
+          await manager.update(
+            Enrollment,
+            { student: { id: student.id } },
+            { isActive: false },
+          );
 
           student.isActive = false;
           await manager.save(student);
@@ -344,5 +361,22 @@ export class UsersService {
     });
 
     return result;
+  }
+
+  async searchStudents(query: string) {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .where('user.role = :role', { role: UserRole.STUDENT })
+      .andWhere('user.isActive = :isActive', { isActive: true })
+      .andWhere(
+        new Brackets((qb) => {
+          qb.where('user.username LIKE :query')
+            .orWhere('user.firstName LIKE :query')
+            .orWhere('user.lastName LIKE :query');
+        }),
+      )
+      .setParameter('query', `%${query}%`)
+      .select(['user.id', 'user.username', 'user.firstName', 'user.lastName'])
+      .getMany();
   }
 }

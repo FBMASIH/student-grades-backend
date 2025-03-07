@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { ObjectionService } from './objection.service';
 
@@ -34,12 +26,6 @@ export class ObjectionController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch('resolve/:id')
-  resolveObjection(@Param('id') id: number) {
-    return this.objectionService.resolveObjection(id);
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Get('teacher/:teacherId')
   getTeacherObjections(@Param('teacherId') teacherId: number) {
     return this.objectionService.getTeacherObjections(teacherId);
@@ -52,5 +38,20 @@ export class ObjectionController {
     @Body() { response }: { response: string },
   ) {
     return this.objectionService.respondToObjection(id, response);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('students/:studentId') // Changed from 'students/:studentId/objections'
+  async getStudentObjections(@Param('studentId') studentId: number) {
+    return this.objectionService.getStudentObjections(studentId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':objectionId/resolve')
+  resolveObjection(
+    @Param('objectionId') objectionId: number,
+    @Body() data: { resolution: string },
+  ) {
+    return this.objectionService.resolveObjection(objectionId);
   }
 }

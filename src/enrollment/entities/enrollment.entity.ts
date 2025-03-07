@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { CourseGroup } from '../../course-groups/entities/course-group.entity';
+import { Course } from '../../course/entities/course.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('enrollments')
@@ -22,14 +23,16 @@ export class Enrollment {
   student: User;
 
   @Column()
-  groupId: number;
+  courseId: number;
 
-  @ManyToOne(() => CourseGroup, (group) => group.enrollments, {
+  @ManyToOne(() => Course, (course) => course.enrollments, {
     nullable: false,
     onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
   })
-  @JoinColumn({ name: 'groupId' })
+  @JoinColumn({ name: 'courseId' })
+  course: Course;
+
+  @ManyToOne(() => CourseGroup, (courseGroup) => courseGroup.enrollments)
   group: CourseGroup;
 
   @Column({ nullable: true, type: 'float' })
@@ -48,9 +51,6 @@ export class Enrollment {
     nullable: false,
     onDelete: 'CASCADE',
   })
-  @JoinColumn({
-    name: 'createdById',
-    foreignKeyConstraintName: 'FK_enrollment_createdBy',
-  })
+  @JoinColumn({ name: 'createdById' })
   createdBy: User;
 }

@@ -77,7 +77,11 @@ export class TicketsController {
     @Body() createCommentDto: CreateCommentDto,
     @GetUser('id') userId: number,
   ) {
-    return this.ticketsService.addComment(ticketId, createCommentDto, userId);
+    return this.ticketsService.addComment(
+      ticketId,
+      userId,
+      createCommentDto.text,
+    ); // Fixed order of parameters
   }
 
   @Get(':id/comments')

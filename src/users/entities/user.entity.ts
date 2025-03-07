@@ -1,4 +1,11 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  Repository,
+} from 'typeorm';
+import { Course } from '../../course/entities/course.entity';
 import { Enrollment } from '../../enrollment/entities/enrollment.entity';
 
 export enum UserRole {
@@ -41,4 +48,22 @@ export class User {
     onDelete: 'CASCADE',
   })
   createdEnrollments: Enrollment[];
+
+  @OneToMany(() => Course, (course) => course.professor)
+  courses: Course[];
+
+  static createQueryBuilderWithInactive(repository: Repository<User>) {
+    return repository.createQueryBuilder().withDeleted().where('1=1'); // This will bypass the default isActive filter
+  }
+
+  static async findOneWithInactive(
+    repository: Repository<User>,
+    conditions: any,
+  ) {
+    return repository
+      .createQueryBuilder('user')
+      .where(conditions)
+      .withDeleted()
+      .getOne();
+  }
 }

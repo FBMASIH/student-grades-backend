@@ -6,8 +6,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginatedResponse } from 'src/common/interfaces/pagination.interface';
+import { CourseAssignmentRepository } from 'src/course-assignments/course-assignment.repository';
 import { Repository } from 'typeorm';
-import { CourseGroup } from '../course-groups/entities/course-group.entity';
+import { Course } from '../course/entities/course.entity';
 import { User, UserRole } from '../users/entities/user.entity';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
@@ -18,50 +19,58 @@ import { EnrollmentResponse } from './interfaces/enrollment-response.interface';
 export class EnrollmentService {
   constructor(
     @InjectRepository(Enrollment)
-    private enrollmentRepository: Repository<Enrollment>,
-    @InjectRepository(CourseGroup)
-    private courseGroupRepository: Repository<CourseGroup>,
+    private readonly enrollmentRepository: Repository<Enrollment>,
+    @InjectRepository(CourseAssignmentRepository)
+    private readonly courseAssignmentRepository: CourseAssignmentRepository, // Add this injection
+    @InjectRepository(Course)
+    private courseRepository: Repository<Course>,
     @InjectRepository(User)
-    private userRepository: Repository<User>,
+    private readonly userRepository: Repository<User>,
   ) {}
 
-  async enrollStudent(studentId: number, groupId: number, createdById: number) {
+  async enrollStudent(
+    studentId: number,
+    courseId: number,
+    createdById: number,
+  ) {
     if (!createdById) {
       throw new UnauthorizedException('User ID is required');
     }
 
     return await this.enrollmentRepository.manager.transaction(
       async (manager) => {
-        const createdBy = await manager.findOne(User, {
-          where: { id: createdById },
+        // Check if student is active
+        const student = await manager.findOne(User, {
+          where: { id: studentId, isActive: true, role: UserRole.STUDENT },
         });
 
-        if (!createdBy) {
+        if (!student) {
+          throw new NotFoundException('دانشجوی فعال یافت نشد');
+        }
+
+        // Check if creator is active
+        const creator = await manager.findOne(User, {
+          where: { id: createdById, isActive: true },
+        });
+
+        if (!creator) {
           throw new NotFoundException('کاربر ایجاد کننده یافت نشد');
         }
 
-        const group = await manager.findOne(CourseGroup, {
-          where: { id: groupId },
+        const course = await manager.findOne(Course, {
+          where: { id: courseId },
           relations: ['enrollments'],
           lock: { mode: 'pessimistic_write' },
         });
 
-        if (!group) {
+        if (!course) {
           throw new NotFoundException('گروه درسی یافت نشد');
-        }
-
-        const student = await manager.findOne(User, {
-          where: { id: studentId, role: UserRole.STUDENT },
-        });
-
-        if (!student) {
-          throw new NotFoundException('دانشجو یافت نشد');
         }
 
         const existingEnrollment = await manager.findOne(Enrollment, {
           where: {
             student: { id: studentId },
-            group: { id: groupId },
+            course: { id: courseId },
             isActive: true,
           },
         });
@@ -74,16 +83,12 @@ export class EnrollmentService {
 
         const enrollment = new Enrollment();
         enrollment.student = student;
-        enrollment.groupId = group.id;
-        enrollment.group = group;
+        enrollment.course = course;
         enrollment.isActive = true;
         enrollment.createdById = createdById;
-        enrollment.createdBy = createdBy;
+        enrollment.createdBy = creator;
 
         const savedEnrollment = await manager.save(Enrollment, enrollment);
-
-        group.currentEnrollment++;
-        await manager.save(group);
 
         return savedEnrollment;
       },
@@ -91,18 +96,18 @@ export class EnrollmentService {
   }
 
   async enrollMultipleStudents(
-    groupId: number,
+    courseId: number,
     usernames: string[],
     createdById: number,
   ) {
     return await this.enrollmentRepository.manager.transaction(
       async (manager) => {
-        const group = await manager.findOne(CourseGroup, {
-          where: { id: groupId },
+        const course = await manager.findOne(Course, {
+          where: { id: courseId },
           lock: { mode: 'pessimistic_write' },
         });
 
-        if (!group) {
+        if (!course) {
           throw new NotFoundException('گروه درسی یافت نشد');
         }
 
@@ -142,7 +147,7 @@ export class EnrollmentService {
             const existingEnrollment = await manager.findOne(Enrollment, {
               where: {
                 student: { id: student.id },
-                group: { id: groupId },
+                course: { id: courseId },
                 isActive: true,
               },
             });
@@ -157,14 +162,13 @@ export class EnrollmentService {
 
             const enrollment = manager.create(Enrollment, {
               student,
-              group,
+              course,
               isActive: true,
               createdById,
               createdBy,
             });
 
             await manager.save(enrollment);
-            group.currentEnrollment++;
             results.successful.push({
               username: student.username,
               id: student.id,
@@ -177,7 +181,6 @@ export class EnrollmentService {
           }
         }
 
-        await manager.save(group);
         return results;
       },
     );
@@ -190,7 +193,7 @@ export class EnrollmentService {
 
     const enrollment = await this.enrollmentRepository.findOne({
       where: { id: enrollmentId },
-      relations: ['student', 'group'],
+      relations: ['student', 'course'],
     });
 
     if (!enrollment) {
@@ -204,17 +207,17 @@ export class EnrollmentService {
   async getStudentEnrollments(studentId: number) {
     return await this.enrollmentRepository.find({
       where: {
-        student: { id: studentId },
+        student: { id: studentId, isActive: true },
         isActive: true,
       },
-      relations: ['group', 'group.course', 'group.professor'],
+      relations: ['course', 'course.professor'],
     });
   }
 
-  async getGroupEnrollments(groupId: number) {
+  async getCourseEnrollments(courseId: number) {
     return await this.enrollmentRepository.find({
       where: {
-        group: { id: groupId },
+        course: { id: courseId },
         isActive: true,
       },
       relations: ['student'],
@@ -229,10 +232,10 @@ export class EnrollmentService {
     const queryBuilder = this.enrollmentRepository
       .createQueryBuilder('enrollment')
       .leftJoinAndSelect('enrollment.student', 'student')
-      .leftJoinAndSelect('enrollment.group', 'group')
-      .leftJoinAndSelect('group.course', 'course')
-      .leftJoinAndSelect('group.professor', 'professor')
-      .where('enrollment.isActive = :isActive', { isActive: true });
+      .leftJoinAndSelect('enrollment.course', 'course')
+      .leftJoinAndSelect('course.professor', 'professor')
+      .where('enrollment.isActive = :isActive', { isActive: true })
+      .andWhere('student.isActive = :studentActive', { studentActive: true });
 
     if (search) {
       queryBuilder.andWhere(
@@ -256,7 +259,7 @@ export class EnrollmentService {
     const items: EnrollmentResponse[] = enrollments.map((enrollment) => ({
       id: enrollment.id,
       student: enrollment.student,
-      group: enrollment.group,
+      course: enrollment.course,
       score: enrollment.score,
       createdAt: enrollment.createdAt,
       isActive: enrollment.isActive,
@@ -278,7 +281,7 @@ export class EnrollmentService {
       async (manager) => {
         const enrollment = await manager.findOne(Enrollment, {
           where: { id, isActive: true },
-          relations: ['group'],
+          relations: ['course'],
           lock: { mode: 'pessimistic_write' },
         });
 
@@ -286,33 +289,22 @@ export class EnrollmentService {
           throw new NotFoundException('ثبت نام مورد نظر یافت نشد');
         }
 
-        const group = enrollment.group;
-        if (!group) {
-          throw new NotFoundException('گروه مورد نظر یافت نشد');
-        }
-
         // Just mark as inactive, don't modify the relationship
         enrollment.isActive = false;
         await manager.save(enrollment);
-
-        // Update group count
-        if (group.currentEnrollment > 0) {
-          group.currentEnrollment--;
-          await manager.save(group);
-        }
       },
     );
   }
 
   async create(createEnrollmentDto: CreateEnrollmentDto, createdById: number) {
-    const { groupId } = createEnrollmentDto;
+    const { courseId } = createEnrollmentDto;
 
-    // Check if the groupId exists in the course_group table
-    const courseGroup = await this.courseGroupRepository.findOne({
-      where: { id: groupId },
+    // Check if the courseId exists in the course table
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
     });
-    if (!courseGroup) {
-      throw new NotFoundException(`Course group with ID ${groupId} not found`);
+    if (!course) {
+      throw new NotFoundException(`Course with ID ${courseId} not found`);
     }
 
     const createdBy = await this.userRepository.findOne({
@@ -332,17 +324,15 @@ export class EnrollmentService {
   }
 
   async update(id: number, updateEnrollmentDto: UpdateEnrollmentDto) {
-    const { groupId } = updateEnrollmentDto;
+    const { courseId } = updateEnrollmentDto;
 
-    // Check if the groupId exists in the course_group table
-    if (groupId) {
-      const courseGroup = await this.courseGroupRepository.findOne({
-        where: { id: groupId },
+    // Check if the courseId exists in the course table
+    if (courseId) {
+      const course = await this.courseRepository.findOne({
+        where: { id: courseId },
       });
-      if (!courseGroup) {
-        throw new NotFoundException(
-          `Course group with ID ${groupId} not found`,
-        );
+      if (!course) {
+        throw new NotFoundException(`Course with ID ${courseId} not found`);
       }
     }
 
@@ -358,8 +348,8 @@ export class EnrollmentService {
     return await this.enrollmentRepository.save(enrollment);
   }
 
-  async updateGroupScores(
-    groupId: number,
+  async updateCourseScores(
+    courseId: number,
     scores: Array<{ studentId: number; score: number }>,
   ) {
     return await this.enrollmentRepository.manager.transaction(
@@ -378,7 +368,7 @@ export class EnrollmentService {
             const enrollment = await manager.findOne(Enrollment, {
               where: {
                 student: { id: scoreData.studentId },
-                groupId: groupId,
+                courseId: courseId,
                 isActive: true,
               },
             });
@@ -401,5 +391,147 @@ export class EnrollmentService {
         return results;
       },
     );
+  }
+
+  async getStudentEnrollmentDetails(studentId: number) {
+    const enrollments = await this.enrollmentRepository
+      .createQueryBuilder('enrollment')
+      .leftJoinAndSelect('enrollment.course', 'course')
+      .where('enrollment.student.id = :studentId', { studentId })
+      .andWhere('enrollment.isActive = :isActive', { isActive: true })
+      .getMany();
+
+    if (!enrollments.length) {
+      throw new NotFoundException('Enrollments not found for the student');
+    }
+
+    return {
+      enrollments: enrollments.map((enrollment) => ({
+        id: enrollment.id,
+        courseId: enrollment.course.id,
+        courseName: enrollment.course.name,
+        courseCode: enrollment.course.code,
+        score: enrollment.score,
+      })),
+    };
+  }
+
+  async updateScore(enrollmentId: number, score: number) {
+    if (score < 0 || score > 20) {
+      throw new BadRequestException('Score must be between 0 and 20');
+    }
+
+    const enrollment = await this.enrollmentRepository.findOne({
+      where: { id: enrollmentId },
+      relations: ['student', 'course'],
+    });
+
+    if (!enrollment) {
+      throw new NotFoundException('Enrollment not found');
+    }
+
+    enrollment.score = score;
+    await this.enrollmentRepository.save(enrollment);
+    return enrollment;
+  }
+
+  async bulkUpdateScores(
+    scores: Array<{ enrollmentId: number; score: number }>,
+  ) {
+    const results = {
+      successful: 0,
+      failed: 0,
+      errors: [] as Array<{ enrollmentId: number; message: string }>,
+    };
+
+    for (const scoreData of scores) {
+      try {
+        if (scoreData.score < 0 || scoreData.score > 100) {
+          throw new BadRequestException('Score must be between 0 and 100');
+        }
+
+        const enrollment = await this.enrollmentRepository.findOne({
+          where: { id: scoreData.enrollmentId },
+          relations: ['student', 'course'],
+        });
+
+        if (!enrollment) {
+          throw new NotFoundException('Enrollment not found');
+        }
+
+        enrollment.score = scoreData.score;
+        await this.enrollmentRepository.save(enrollment);
+        results.successful++;
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          enrollmentId: scoreData.enrollmentId,
+          message: error.message || 'Error updating score',
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async enrollStudents(assignmentId: number, studentIds: number[]) {
+    const assignment = await this.courseAssignmentRepository.findOne({
+      where: { id: assignmentId },
+      relations: ['course', 'professor'],
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Course assignment not found');
+    }
+
+    const results = {
+      successful: [] as Array<{ id: number; username: string }>,
+      errors: [] as Array<{ id: number; reason: string }>,
+    };
+
+    for (const studentId of studentIds) {
+      try {
+        const student = await this.userRepository.findOne({
+          where: { id: studentId, role: UserRole.STUDENT },
+        });
+
+        if (!student) {
+          results.errors.push({ id: studentId, reason: 'Student not found' });
+          continue;
+        }
+
+        const existingEnrollment = await this.enrollmentRepository.findOne({
+          where: {
+            student: { id: studentId },
+            courseId: assignment.courseId,
+            isActive: true,
+          },
+        });
+
+        if (existingEnrollment) {
+          results.errors.push({
+            id: studentId,
+            reason: 'Student already enrolled',
+          });
+          continue;
+        }
+
+        const enrollment = this.enrollmentRepository.create({
+          student,
+          courseId: assignment.courseId,
+          course: assignment.course,
+          isActive: true,
+          createdById: assignment.professorId,
+          createdBy: assignment.professor,
+        });
+
+        await this.enrollmentRepository.save(enrollment);
+        results.successful.push({ id: student.id, username: student.username });
+      } catch (error) {
+        results.errors.push({ id: studentId, reason: 'Enrollment failed' });
+      }
+    }
+
+    return results;
   }
 }

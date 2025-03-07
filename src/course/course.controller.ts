@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CourseService } from './course.service';
+import { CreateCourseDto } from './dto/create-grade.dto';
 
 @Controller('courses')
 @UseGuards(JwtAuthGuard)
@@ -23,34 +24,17 @@ export class CourseController {
     @Query('limit') limit?: number,
     @Query('search') search?: string,
   ) {
-    return this.coursesService.getAllCourses(page, limit, search);
+    return this.coursesService.getAllCourses({ page, limit, search });
   }
 
   @Post()
-  createCourse(
-    @Body()
-    data: {
-      name: string;
-      code: string;
-      units: number;
-      department?: string;
-    },
-  ) {
-    return this.coursesService.createCourse(data);
+  createCourse(@Body() createCourseDto: CreateCourseDto) {
+    return this.coursesService.create(createCourseDto);
   }
 
   @Patch(':id')
-  updateCourse(
-    @Param('id') id: number,
-    @Body()
-    data: {
-      name?: string;
-      code?: string;
-      units?: number;
-      department?: string;
-    },
-  ) {
-    return this.coursesService.updateCourse(id, data);
+  updateCourse(@Param('id') id: number, @Body() updateCourseDto: any) {
+    return this.coursesService.update(id, updateCourseDto);
   }
 
   @Delete(':id')
@@ -63,6 +47,11 @@ export class CourseController {
     return this.coursesService.getCourse(id);
   }
 
+  @Get(':id/students')
+  getCourseStudents(@Param('id') courseId: number) {
+    return this.coursesService.getCourseStudents(courseId);
+  }
+
   @Get('student/:id')
   getStudentCourses(@Param('id') studentId: number) {
     return this.coursesService.getStudentCourses(studentId);
@@ -70,7 +59,7 @@ export class CourseController {
 
   @Get('professor/:id')
   getProfessorCourses(@Param('id') professorId: number) {
-    return this.coursesService.getProfessorCourses(professorId);
+    return this.coursesService.getTeacherCourses(professorId);
   }
 
   @Get('teacher/:id/details')

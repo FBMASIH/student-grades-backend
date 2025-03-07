@@ -4,12 +4,18 @@ import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
-import { CourseModule } from './course/course.module';
-import { ObjectionModule } from './objection/objection.module';
-import { UserModule } from './users/users.module';
+import { UserSubscriber } from './common/subscribers/user-subscriber';
+import { CourseAssignmentsModule } from './course-assignments/course-assignments.module';
 import { CourseGroupsModule } from './course-groups/course-groups.module';
+import { CourseModule } from './course/course.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
+import { Enrollment } from './enrollment/entities/enrollment.entity';
+import { GroupsModule } from './groups/groups.module';
+import { ObjectionModule } from './objection/objection.module';
+import { ScoresController } from './scores/scores.controller';
+import { ScoresService } from './scores/scores.service';
 import { TicketsModule } from './tickets/tickets.module';
+import { UserModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -24,6 +30,7 @@ import { TicketsModule } from './tickets/tickets.module';
       autoLoadEntities: true,
       synchronize: true,
     }),
+    TypeOrmModule.forFeature([Enrollment]),
 
     UserModule,
     CourseModule,
@@ -32,12 +39,17 @@ import { TicketsModule } from './tickets/tickets.module';
     AuthModule,
     CourseGroupsModule,
     EnrollmentModule,
+    GroupsModule,
+    CourseAssignmentsModule,
   ],
+  controllers: [ScoresController],
   providers: [
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
+    UserSubscriber,
+    ScoresService,
   ],
 })
 export class AppModule {}

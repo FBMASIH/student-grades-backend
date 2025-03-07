@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { CourseGroup } from '../course-groups/entities/course-group.entity';
+import { CreateCourseDto } from './dto/create-grade.dto';
 import { Course } from './entities/course.entity';
 
 @Injectable()
@@ -18,11 +19,15 @@ export class CourseService {
     private courseGroupRepository: Repository<CourseGroup>,
   ) {}
 
-  async getAllCourses(
-    page: number = 1,
-    limit: number = 10,
-    search?: string,
-  ): Promise<PaginatedResponse<Course>> {
+  async getAllCourses(options?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<PaginatedResponse<Course>> {
+    const page = options?.page || 1;
+    const limit = options?.limit || 10;
+    const search = options?.search;
+
     const queryBuilder = this.courseRepository
       .createQueryBuilder('course')
       .leftJoinAndSelect('course.groups', 'groups')
@@ -58,6 +63,25 @@ export class CourseService {
     department?: string;
   }) {
     const course = this.courseRepository.create(data);
+    return await this.courseRepository.save(course);
+  }
+
+  async create(createCourseDto: CreateCourseDto) {
+    const course = this.courseRepository.create({
+      name: createCourseDto.name,
+      isActive: true,
+    });
+
+    return await this.courseRepository.save(course);
+  }
+
+  async update(id: number, updateCourseDto: any) {
+    const course = await this.courseRepository.findOne({ where: { id } });
+    if (!course) {
+      throw new NotFoundException('Course not found');
+    }
+
+    Object.assign(course, updateCourseDto);
     return await this.courseRepository.save(course);
   }
 
@@ -194,44 +218,65 @@ export class CourseService {
   }
 
   // Get courses taught by a professor
-  async getProfessorCourses(professorId: number) {
-    const groups = await this.courseGroupRepository.find({
-      where: { professor: { id: professorId } },
-      relations: ['course', 'enrollments', 'enrollments.student'],
-    });
-
-    return groups;
-  }
-
   async getTeacherCoursesDetails(teacherId: number) {
-    const courses = await this.courseRepository
+    return await this.courseRepository
       .createQueryBuilder('course')
       .leftJoinAndSelect('course.groups', 'group')
       .leftJoinAndSelect('group.enrollments', 'enrollment')
       .leftJoinAndSelect('enrollment.student', 'student')
-      .where('group.professorId = :teacherId', { teacherId })
+      .where('group.professor.id = :teacherId', { teacherId })
       .andWhere('enrollment.isActive = :isActive', { isActive: true })
+      .andWhere('student.isActive = :isActive', { isActive: true })
+      .getMany();
+  }
+
+  // Replace getProfessorCourses with this new method
+  async getTeacherCourses(teacherId: number) {
+    const courses = await this.courseRepository
+      .createQueryBuilder('course')
+      .innerJoinAndSelect('course.groups', 'groups')
+      .where('groups.professor.id = :teacherId', { teacherId })
       .getMany();
 
-    return {
-      courses: courses.map((course) => ({
-        id: course.id,
-        name: course.name,
-        code: course.code,
-        units: course.units,
-        groups: course.groups.map((group) => ({
-          id: group.id,
-          groupNumber: group.groupNumber,
-          enrollmentCount: group.enrollments.length,
-          students: group.enrollments.map((enrollment) => ({
+    if (!courses.length) {
+      throw new NotFoundException('استاد هیچ درسی ندارد');
+    }
+
+    return courses;
+  }
+
+  async getCourseStudents(courseId: number) {
+    const course = await this.courseRepository
+      .createQueryBuilder('course')
+      .leftJoinAndSelect('course.groups', 'group')
+      .leftJoinAndSelect('group.enrollments', 'enrollment')
+      .leftJoinAndSelect('enrollment.student', 'student')
+      .where('course.id = :courseId', { courseId })
+      .andWhere('enrollment.isActive = true')
+      .andWhere('student.isActive = true')
+      .getOne();
+
+    if (!course) {
+      throw new NotFoundException('درس مورد نظر یافت نشد');
+    }
+
+    // Flatten and transform the data to get unique students
+    const students = new Map();
+    course.groups.forEach((group) => {
+      group.enrollments.forEach((enrollment) => {
+        if (enrollment.student) {
+          students.set(enrollment.student.id, {
             id: enrollment.student.id,
             username: enrollment.student.username,
             firstName: enrollment.student.firstName,
             lastName: enrollment.student.lastName,
+            groupNumber: group.groupNumber,
             score: enrollment.score,
-          })),
-        })),
-      })),
-    };
+          });
+        }
+      });
+    });
+
+    return Array.from(students.values());
   }
 }

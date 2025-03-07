@@ -3,11 +3,9 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
-  JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Comment } from './comment.entity';
@@ -23,21 +21,20 @@ export class Ticket {
   @Column('text')
   description: string;
 
+  @CreateDateColumn()
+  createdAt: Date;
+
   @Column()
   createdById: number;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'createdById' })
   createdBy: User;
+
+  @Column({ default: false })
+  responded: boolean;
 
   @OneToMany(() => Comment, (comment) => comment.ticket)
   comments: Comment[];
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 
   @DeleteDateColumn()
   deletedAt?: Date;

@@ -1,1 +1,4 @@
-export class CreateCourseDto {}
+export class CreateCourseDto {
+  name: string;
+  // other properties
+}
