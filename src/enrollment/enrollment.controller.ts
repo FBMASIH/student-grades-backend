@@ -34,16 +34,16 @@ export class EnrollmentController {
   constructor(private readonly enrollmentService: EnrollmentService) {}
 
   @Post()
-  enrollStudent(
-    @Body() enrollmentData: { studentId: number; courseId: number },
+  async createEnrollment(
+    @Body() data: { studentId: number; groupId: number },
     @Req() request: RequestWithUser,
   ) {
     if (!request.user?.id) {
       throw new UnauthorizedException('User not authenticated');
     }
-    return this.enrollmentService.enrollStudent(
-      enrollmentData.studentId,
-      enrollmentData.courseId,
+    return this.enrollmentService.createEnrollmentForGroup(
+      data.studentId,
+      data.groupId,
       request.user.id,
     );
   }

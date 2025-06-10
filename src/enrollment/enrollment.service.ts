@@ -534,4 +534,53 @@ export class EnrollmentService {
 
     return results;
   }
+
+  async createEnrollmentForGroup(
+    studentId: number,
+    groupId: number,
+    createdById: number,
+  ) {
+    // Find the group assignment
+    const groupAssignment = await this.courseAssignmentRepository.findOne({
+      where: { id: groupId },
+      relations: ['course'],
+    });
+    if (!groupAssignment) {
+      throw new NotFoundException('Group assignment not found');
+    }
+    // Find the student
+    const student = await this.userRepository.findOne({
+      where: { id: studentId, isActive: true, role: UserRole.STUDENT },
+    });
+    if (!student) {
+      throw new NotFoundException('Student not found or inactive');
+    }
+    // Find the creator
+    const creator = await this.userRepository.findOne({
+      where: { id: createdById },
+    });
+    if (!creator) {
+      throw new NotFoundException('Creator not found');
+    }
+    // Check for existing enrollment
+    const existing = await this.enrollmentRepository.findOne({
+      where: {
+        student: { id: studentId },
+        course: { id: groupAssignment.courseId },
+        isActive: true,
+      },
+    });
+    if (existing) {
+      throw new BadRequestException('Student already enrolled in this group');
+    }
+    // Create enrollment
+    const enrollment = new Enrollment();
+    enrollment.student = student;
+    enrollment.course = groupAssignment.course;
+    enrollment.courseId = groupAssignment.courseId;
+    enrollment.isActive = true;
+    enrollment.createdById = createdById;
+    enrollment.createdBy = creator;
+    return this.enrollmentRepository.save(enrollment);
+  }
 }
