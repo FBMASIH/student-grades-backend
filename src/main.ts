@@ -9,11 +9,15 @@ async function bootstrap() {
   const jwtSecret = configService.get<string>('jwtSecret');
 
   app.enableCors({
-    origin: '*', // Allow all origins
-    methods: '*', // Allow all methods
-    credentials: true, // Allow cookies/auth headers
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://185.105.184.157:3000',
+      'http://185.105.184.157:3001',
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    credentials: true,
     allowedHeaders: [
-      'Access-Control-Allow-Origin',
       'Origin',
       'X-Requested-With',
       'Accept',
