@@ -8,14 +8,7 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const jwtSecret = configService.get<string>('jwtSecret');
 
-  app.enableCors({
-    origin: 'http://localhost:3000', // Replace with your front-end domain
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
-  });
+  app.enableCors();
 
   const config = new DocumentBuilder()
     .setTitle('سیستم مدیریت نمرات')
