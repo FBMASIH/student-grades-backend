@@ -9,7 +9,7 @@ async function bootstrap() {
   const jwtSecret = configService.get<string>('jwtSecret');
 
   app.enableCors({
-    origin: 'http://185.105.184.157:3001', // Replace with your front-end domain
+    origin: 'http://185.105.184.157:3000', // Replace with your front-end domain
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
