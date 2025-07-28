@@ -84,7 +84,12 @@ export class GroupsService {
       .createQueryBuilder('enrollment')
       .leftJoinAndSelect('enrollment.student', 'student')
       .leftJoinAndSelect('enrollment.course', 'course')
-      .innerJoin('course_assignments', 'ca', 'ca.courseId = course.id AND ca.groupId = :groupId', { groupId })
+      .innerJoin(
+        'course_assignments',
+        'ca',
+        'ca.courseId = course.id AND ca.groupId = :groupId',
+        { groupId },
+      )
       .where('enrollment.isActive = :isActive', { isActive: true })
       .andWhere('student.isActive = :isActive', { isActive: true })
       .select([
@@ -114,5 +119,62 @@ export class GroupsService {
       throw new NotFoundException('Group not found');
     }
     return { message: 'Group deleted successfully' };
+  }
+
+  async submitGroupScores(
+    groupId: number,
+    scores: Array<{ studentId: number; score: number }>,
+  ) {
+    const results = {
+      successful: 0,
+      failed: 0,
+      errors: [] as Array<{ studentId: number; message: string }>,
+    };
+
+    // Verify the group exists
+    const groupAssignment = await this.courseAssignmentRepository.findOne({
+      where: { id: groupId },
+    });
+    if (!groupAssignment) {
+      throw new NotFoundException('Group not found');
+    }
+
+    // Process each score in the array
+    for (const scoreData of scores) {
+      try {
+        if (scoreData.score < 0 || scoreData.score > 20) {
+          throw new Error('Score must be between 0 and 20');
+        }
+
+        const enrollment = await this.enrollmentRepository.findOne({
+          where: {
+            student: { id: scoreData.studentId },
+            course: { id: groupAssignment.courseId },
+            isActive: true,
+          },
+        });
+
+        if (!enrollment) {
+          results.failed++;
+          results.errors.push({
+            studentId: scoreData.studentId,
+            message: 'Student enrollment not found',
+          });
+          continue;
+        }
+
+        enrollment.score = scoreData.score;
+        await this.enrollmentRepository.save(enrollment);
+        results.successful++;
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          studentId: scoreData.studentId,
+          message: error.message || 'Failed to update score',
+        });
+      }
+    }
+
+    return results;
   }
 }
