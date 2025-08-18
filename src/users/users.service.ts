@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
+import { CourseGroup } from 'src/course-groups/entities/course-group.entity';
 import { Brackets, Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { User, UserRole } from './entities/user.entity';
@@ -15,6 +16,10 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(CourseGroup)
+    private courseGroupRepository: Repository<CourseGroup>,
+    @InjectRepository(Enrollment)
+    private enrollmentRepository: Repository<Enrollment>,
   ) {}
 
   async findAll(
@@ -100,7 +105,7 @@ export class UsersService {
   async updateUserRole(id: number, role: UserRole) {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) throw new BadRequestException('کاربر پیدا نشد');
-    user.role = role as UserRole;
+    user.role = role;
     await this.usersRepository.save(user);
     return { message: 'نقش کاربر با موفقیت تغییر کرد' };
   }
@@ -177,7 +182,11 @@ export class UsersService {
     });
   }
 
-  async importUsersWithResponseFromExcel(file: Express.Multer.File): Promise<{
+  async importUsersWithResponseFromExcel(
+    file: Express.Multer.File,
+    role: UserRole,
+    groupId: number,
+  ): Promise<{
     users: User[];
     errors: string[];
     duplicates: Array<{
@@ -192,6 +201,23 @@ export class UsersService {
       lastName: string;
     }>;
   }> {
+    if (!role || !Object.values(UserRole).includes(role)) {
+      throw new BadRequestException('نقش نامعتبر است');
+    }
+
+    if (!groupId) {
+      throw new BadRequestException('شناسه گروه الزامی است');
+    }
+
+    const group = await this.courseGroupRepository.findOne({
+      where: { id: groupId },
+      relations: ['course', 'professor'],
+    });
+
+    if (!group) {
+      throw new BadRequestException('گروه یافت نشد');
+    }
+
     const fileContent = file.buffer.toString();
     const lines = fileContent.split('\n');
 
@@ -223,21 +249,45 @@ export class UsersService {
       })
       .filter(({ username, password }) => username && password);
 
+    const ensureEnrollment = async (user: User) => {
+      const existingEnrollment = await this.enrollmentRepository.findOne({
+        where: {
+          student: { id: user.id },
+          group: { id: group.id },
+          isActive: true,
+        },
+      });
+
+      if (!existingEnrollment) {
+        const enrollment = this.enrollmentRepository.create({
+          student: user,
+          group: group,
+          course: group.course,
+          courseId: group.courseId,
+          isActive: true,
+          createdById: group.professorId,
+          createdBy: group.professor,
+        });
+        await this.enrollmentRepository.save(enrollment);
+      }
+    };
+
     for (const userData of usersToImport) {
       try {
-        // Check for existing user (both active and inactive)
         const existingUser = await this.usersRepository.findOne({
           where: { username: userData.username },
         });
 
         if (existingUser) {
           if (!existingUser.isActive) {
-            // Reactivate inactive user
             existingUser.isActive = true;
             existingUser.password = await bcrypt.hash(userData.password, 10);
             existingUser.firstName = userData.firstName;
             existingUser.lastName = userData.lastName;
+            existingUser.role = role;
             await this.usersRepository.save(existingUser);
+
+            await ensureEnrollment(existingUser);
 
             result.reactivated.push({
               username: existingUser.username,
@@ -245,7 +295,6 @@ export class UsersService {
               lastName: existingUser.lastName,
             });
           } else {
-            // Report active duplicate
             result.duplicates.push({
               username: existingUser.username,
               firstName: existingUser.firstName,
@@ -256,14 +305,16 @@ export class UsersService {
           continue;
         }
 
-        // Create new user if doesn't exist
         const user = await this.createUser(
           userData.username,
           userData.password,
           userData.firstName,
           userData.lastName,
-          UserRole.STUDENT,
+          role,
         );
+
+        await ensureEnrollment(user);
+
         result.users.push(user);
       } catch (error: any) {
         result.errors.push(`ثبت کاربر ${userData.username}: ${error.message}`);

@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -105,8 +106,16 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('upload-excel')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadExcelUsers(@UploadedFile() file: Express.Multer.File) {
-    return this.usersService.importUsersWithResponseFromExcel(file);
+  async uploadExcelUsers(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('role') role: UserRole,
+    @Body('groupId', ParseIntPipe) groupId: number,
+  ) {
+    return this.usersService.importUsersWithResponseFromExcel(
+      file,
+      role,
+      groupId,
+    );
   }
 
   @HasRoles(UserRole.ADMIN)
