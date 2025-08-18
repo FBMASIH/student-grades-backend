@@ -58,8 +58,9 @@ export class UsersController {
     @Query('limit') limit: number = 10,
     @Query('search') search: string = '',
     @Query('role') role?: UserRole,
+    @Query('groupId') groupId?: number,
   ) {
-    return this.usersService.findAll(page, limit, search, role);
+    return this.usersService.findAll(page, limit, search, role, groupId);
   }
 
   @HasRoles(UserRole.ADMIN)
