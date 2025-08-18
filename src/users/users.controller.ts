@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -58,8 +59,9 @@ export class UsersController {
     @Query('limit') limit: number = 10,
     @Query('search') search: string = '',
     @Query('role') role?: UserRole,
+    @Query('groupId') groupId?: number,
   ) {
-    return this.usersService.findAll(page, limit, search, role);
+    return this.usersService.findAll(page, limit, search, role, groupId);
   }
 
   @HasRoles(UserRole.ADMIN)
@@ -104,8 +106,16 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('upload-excel')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadExcelUsers(@UploadedFile() file: Express.Multer.File) {
-    return this.usersService.importUsersWithResponseFromExcel(file);
+  async uploadExcelUsers(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('role') role: UserRole,
+    @Body('groupId', ParseIntPipe) groupId: number,
+  ) {
+    return this.usersService.importUsersWithResponseFromExcel(
+      file,
+      role,
+      groupId,
+    );
   }
 
   @HasRoles(UserRole.ADMIN)

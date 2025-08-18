@@ -6,7 +6,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
-import { Brackets, Repository } from 'typeorm';
+import { CourseGroup } from 'src/course-groups/entities/course-group.entity';
+import { Brackets, Repository, DeepPartial } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { User, UserRole } from './entities/user.entity';
 
@@ -15,6 +16,10 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(CourseGroup)
+    private courseGroupRepository: Repository<CourseGroup>,
+    @InjectRepository(Enrollment)
+    private enrollmentRepository: Repository<Enrollment>,
   ) {}
 
   async findAll(
@@ -22,20 +27,16 @@ export class UsersService {
     limit: number = 10,
     search: string = '',
     role?: UserRole,
-  ): Promise<PaginatedResponse<User>> {
+    groupId?: number,
+  ): Promise<PaginatedResponse<User & { groupName?: string }>> {
     const skip = (page - 1) * limit;
+
     const query = this.usersRepository
       .createQueryBuilder('user')
-      .select([
-        'user.id',
-        'user.username',
-        'user.role',
-        'user.firstName',
-        'user.lastName',
-      ])
-      .where('user.isActive = :isActive', { isActive: true })
-      .skip(skip)
-      .take(limit);
+      .leftJoin('user.enrollments', 'enrollment', 'enrollment.isActive = true')
+      .leftJoin('course_assignments', 'ca', 'ca.courseId = enrollment.courseId')
+      .leftJoin('groups', 'group', 'group.id = ca.groupId')
+      .where('user.isActive = :isActive', { isActive: true });
 
     if (search) {
       query.andWhere('user.username LIKE :search', { search: `%${search}%` });
@@ -45,12 +46,30 @@ export class UsersService {
       query.andWhere('user.role = :role', { role });
     }
 
-    const [users, total] = await query.getManyAndCount();
+    if (groupId) {
+      query.andWhere('group.id = :groupId', { groupId });
+    }
+
+    const total = await query.getCount();
+
+    const users = await query
+      .select([
+        'user.id AS id',
+        'user.username AS username',
+        'user.role AS role',
+        'user.firstName AS firstName',
+        'user.lastName AS lastName',
+        'group.name AS groupName',
+      ])
+      .skip(skip)
+      .take(limit)
+      .getRawMany();
 
     return {
       items: users,
       meta: {
         total,
+        totalItems: total,
         page,
         limit,
         totalPages: Math.ceil(total / limit),
@@ -86,7 +105,7 @@ export class UsersService {
   async updateUserRole(id: number, role: UserRole) {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) throw new BadRequestException('کاربر پیدا نشد');
-    user.role = role as UserRole;
+    user.role = role;
     await this.usersRepository.save(user);
     return { message: 'نقش کاربر با موفقیت تغییر کرد' };
   }
@@ -163,7 +182,11 @@ export class UsersService {
     });
   }
 
-  async importUsersWithResponseFromExcel(file: Express.Multer.File): Promise<{
+  async importUsersWithResponseFromExcel(
+    file: Express.Multer.File,
+    role: UserRole = UserRole.STUDENT,
+    groupId?: number,
+  ): Promise<{
     users: User[];
     errors: string[];
     duplicates: Array<{
@@ -178,6 +201,23 @@ export class UsersService {
       lastName: string;
     }>;
   }> {
+    if (!Object.values(UserRole).includes(role)) {
+      throw new BadRequestException('نقش نامعتبر است');
+    }
+
+    // If a groupId is provided, validate and load the group for enrollment
+    let group: CourseGroup | null = null;
+    if (groupId) {
+      group = await this.courseGroupRepository.findOne({
+        where: { id: groupId },
+        relations: ['course', 'professor'],
+      });
+
+      if (!group) {
+        throw new BadRequestException('گروه یافت نشد');
+      }
+    }
+
     const fileContent = file.buffer.toString();
     const lines = fileContent.split('\n');
 
@@ -209,21 +249,48 @@ export class UsersService {
       })
       .filter(({ username, password }) => username && password);
 
+    const ensureEnrollment = async (user: User) => {
+      if (!group) return;
+
+      const existingEnrollment = await this.enrollmentRepository.findOne({
+        where: {
+          student: { id: user.id },
+          group: { id: group.id },
+          isActive: true,
+        },
+      });
+
+      if (!existingEnrollment) {
+        const enrollment = this.enrollmentRepository.create({
+          student: user,
+          group,
+          course: group.course,
+          courseId: group.courseId,
+          isActive: true,
+          createdById: group.professorId,
+          createdBy:
+            group.professor ?? ({ id: group.professorId } as User),
+        } as DeepPartial<Enrollment>);
+        await this.enrollmentRepository.save(enrollment);
+      }
+    };
+
     for (const userData of usersToImport) {
       try {
-        // Check for existing user (both active and inactive)
         const existingUser = await this.usersRepository.findOne({
           where: { username: userData.username },
         });
 
         if (existingUser) {
           if (!existingUser.isActive) {
-            // Reactivate inactive user
             existingUser.isActive = true;
             existingUser.password = await bcrypt.hash(userData.password, 10);
             existingUser.firstName = userData.firstName;
             existingUser.lastName = userData.lastName;
+            existingUser.role = role;
             await this.usersRepository.save(existingUser);
+
+            await ensureEnrollment(existingUser);
 
             result.reactivated.push({
               username: existingUser.username,
@@ -231,7 +298,6 @@ export class UsersService {
               lastName: existingUser.lastName,
             });
           } else {
-            // Report active duplicate
             result.duplicates.push({
               username: existingUser.username,
               firstName: existingUser.firstName,
@@ -242,14 +308,16 @@ export class UsersService {
           continue;
         }
 
-        // Create new user if doesn't exist
         const user = await this.createUser(
           userData.username,
           userData.password,
           userData.firstName,
           userData.lastName,
-          UserRole.STUDENT,
+          role,
         );
+
+        await ensureEnrollment(user);
+
         result.users.push(user);
       } catch (error: any) {
         result.errors.push(`ثبت کاربر ${userData.username}: ${error.message}`);
