@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
 import { CourseGroup } from 'src/course-groups/entities/course-group.entity';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, Repository, DeepPartial } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { User, UserRole } from './entities/user.entity';
 
@@ -184,8 +184,8 @@ export class UsersService {
 
   async importUsersWithResponseFromExcel(
     file: Express.Multer.File,
-    role: UserRole,
-    groupId: number,
+    role: UserRole = UserRole.STUDENT,
+    groupId?: number,
   ): Promise<{
     users: User[];
     errors: string[];
@@ -201,21 +201,21 @@ export class UsersService {
       lastName: string;
     }>;
   }> {
-    if (!role || !Object.values(UserRole).includes(role)) {
+    if (!Object.values(UserRole).includes(role)) {
       throw new BadRequestException('نقش نامعتبر است');
     }
 
-    if (!groupId) {
-      throw new BadRequestException('شناسه گروه الزامی است');
-    }
+    // If a groupId is provided, validate and load the group for enrollment
+    let group: CourseGroup | null = null;
+    if (groupId) {
+      group = await this.courseGroupRepository.findOne({
+        where: { id: groupId },
+        relations: ['course', 'professor'],
+      });
 
-    const group = await this.courseGroupRepository.findOne({
-      where: { id: groupId },
-      relations: ['course', 'professor'],
-    });
-
-    if (!group) {
-      throw new BadRequestException('گروه یافت نشد');
+      if (!group) {
+        throw new BadRequestException('گروه یافت نشد');
+      }
     }
 
     const fileContent = file.buffer.toString();
@@ -250,6 +250,8 @@ export class UsersService {
       .filter(({ username, password }) => username && password);
 
     const ensureEnrollment = async (user: User) => {
+      if (!group) return;
+
       const existingEnrollment = await this.enrollmentRepository.findOne({
         where: {
           student: { id: user.id },
@@ -261,13 +263,14 @@ export class UsersService {
       if (!existingEnrollment) {
         const enrollment = this.enrollmentRepository.create({
           student: user,
-          group: group,
+          group,
           course: group.course,
           courseId: group.courseId,
           isActive: true,
           createdById: group.professorId,
-          createdBy: group.professor,
-        });
+          createdBy:
+            group.professor ?? ({ id: group.professorId } as User),
+        } as DeepPartial<Enrollment>);
         await this.enrollmentRepository.save(enrollment);
       }
     };
