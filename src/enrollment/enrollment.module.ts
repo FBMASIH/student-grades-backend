@@ -5,16 +5,11 @@ import { User } from '../users/entities/user.entity';
 import { EnrollmentController } from './enrollment.controller';
 import { EnrollmentService } from './enrollment.service';
 import { Enrollment } from './entities/enrollment.entity';
-import { CourseAssignmentRepository } from '../course-assignments/course-assignment.repository'; // Add this import
+import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      Enrollment,
-      Course,
-      User,
-      CourseAssignmentRepository, // Add this repository
-    ]),
+    TypeOrmModule.forFeature([Enrollment, Course, User, CourseAssignment]),
   ],
   controllers: [EnrollmentController],
   providers: [EnrollmentService],

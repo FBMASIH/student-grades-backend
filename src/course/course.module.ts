@@ -9,14 +9,15 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthService } from 'src/auth/auth.service';
 import { User } from 'src/users/entities/user.entity';
 import { UsersService } from 'src/users/users.service';
+import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Course, CourseGroup, User]),
-    CourseGroupsModule
+    TypeOrmModule.forFeature([Course, CourseGroup, User, Enrollment]),
+    CourseGroupsModule,
   ],
   controllers: [CourseController],
   providers: [CourseService, AuthService, UsersService, JwtService],
-  exports: [CourseService]
+  exports: [CourseService],
 })
 export class CourseModule {}

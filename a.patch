@@ -1,0 +1,98 @@
+diff --git a/src/course-assignments/course-assignment.repository.ts b/src/course-assignments/course-assignment.repository.ts
+deleted file mode 100644
+index c4ed957438593ce45dfe23231eb7cb6b5000cec6..0000000000000000000000000000000000000000
+--- a/src/course-assignments/course-assignment.repository.ts
++++ /dev/null
+@@ -1,5 +0,0 @@
+-import { EntityRepository, Repository } from 'typeorm';
+-import { CourseAssignment } from './entities/course-assignment.entity';
+-
+-@EntityRepository(CourseAssignment)
+-export class CourseAssignmentRepository extends Repository<CourseAssignment> {}
+diff --git a/src/enrollment/enrollment.module.ts b/src/enrollment/enrollment.module.ts
+index 50b3c567d4606e96bc09229fe5673cbee784c528..879d978ccc0ad7fa170109ae734a02784d084c89 100644
+--- a/src/enrollment/enrollment.module.ts
++++ b/src/enrollment/enrollment.module.ts
+@@ -1,23 +1,18 @@
+ import { Module } from '@nestjs/common';
+ import { TypeOrmModule } from '@nestjs/typeorm';
+ import { Course } from '../course/entities/course.entity';
+ import { User } from '../users/entities/user.entity';
+ import { EnrollmentController } from './enrollment.controller';
+ import { EnrollmentService } from './enrollment.service';
+ import { Enrollment } from './entities/enrollment.entity';
+-import { CourseAssignmentRepository } from '../course-assignments/course-assignment.repository'; // Add this import
++import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
+ 
+ @Module({
+   imports: [
+-    TypeOrmModule.forFeature([
+-      Enrollment,
+-      Course,
+-      User,
+-      CourseAssignmentRepository, // Add this repository
+-    ]),
++    TypeOrmModule.forFeature([Enrollment, Course, User, CourseAssignment]),
+   ],
+   controllers: [EnrollmentController],
+   providers: [EnrollmentService],
+   exports: [EnrollmentService],
+ })
+ export class EnrollmentModule {}
+diff --git a/src/enrollment/enrollment.service.ts b/src/enrollment/enrollment.service.ts
+index 487a738fad7b6d1379b832a8f0aa320c3aca2afe..131722e8e66ec8a5142a09758e9df86e5bfbab5a 100644
+--- a/src/enrollment/enrollment.service.ts
++++ b/src/enrollment/enrollment.service.ts
+@@ -1,49 +1,49 @@
+ import {
+   BadRequestException,
+   Injectable,
+   NotFoundException,
+   UnauthorizedException,
+ } from '@nestjs/common';
+ import { InjectRepository } from '@nestjs/typeorm';
+ import { PaginatedResponse } from 'src/common/interfaces/pagination.interface';
+-import { CourseAssignmentRepository } from 'src/course-assignments/course-assignment.repository';
+ import { Repository } from 'typeorm';
++import { CourseAssignment } from 'src/course-assignments/entities/course-assignment.entity';
+ import { Course } from '../course/entities/course.entity';
+ import { User, UserRole } from '../users/entities/user.entity';
+ import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
+ import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
+ import { Enrollment } from './entities/enrollment.entity';
+ import { EnrollmentResponse } from './interfaces/enrollment-response.interface';
+ 
+ @Injectable()
+ export class EnrollmentService {
+   constructor(
+     @InjectRepository(Enrollment)
+     private readonly enrollmentRepository: Repository<Enrollment>,
+-    @InjectRepository(CourseAssignmentRepository)
+-    private readonly courseAssignmentRepository: CourseAssignmentRepository, // Add this injection
++    @InjectRepository(CourseAssignment)
++    private readonly courseAssignmentRepository: Repository<CourseAssignment>,
+     @InjectRepository(Course)
+     private courseRepository: Repository<Course>,
+     @InjectRepository(User)
+     private readonly userRepository: Repository<User>,
+   ) {}
+ 
+   async enrollStudent(
+     studentId: number,
+     courseId: number,
+     createdById: number,
+   ) {
+     if (!createdById) {
+       throw new UnauthorizedException('User ID is required');
+     }
+ 
+     return await this.enrollmentRepository.manager.transaction(
+       async (manager) => {
+         // Check if student is active
+         const student = await manager.findOne(User, {
+           where: { id: studentId, isActive: true, role: UserRole.STUDENT },
+         });
+ 
+         if (!student) {
+           throw new NotFoundException('دانشجوی فعال یافت نشد');
+         }

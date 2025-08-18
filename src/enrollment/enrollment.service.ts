@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginatedResponse } from 'src/common/interfaces/pagination.interface';
-import { CourseAssignmentRepository } from 'src/course-assignments/course-assignment.repository';
 import { Repository } from 'typeorm';
+import { CourseAssignment } from 'src/course-assignments/entities/course-assignment.entity';
 import { Course } from '../course/entities/course.entity';
 import { User, UserRole } from '../users/entities/user.entity';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -20,8 +20,8 @@ export class EnrollmentService {
   constructor(
     @InjectRepository(Enrollment)
     private readonly enrollmentRepository: Repository<Enrollment>,
-    @InjectRepository(CourseAssignmentRepository)
-    private readonly courseAssignmentRepository: CourseAssignmentRepository, // Add this injection
+    @InjectRepository(CourseAssignment)
+    private readonly courseAssignmentRepository: Repository<CourseAssignment>,
     @InjectRepository(Course)
     private courseRepository: Repository<Course>,
     @InjectRepository(User)
