@@ -22,20 +22,16 @@ export class UsersService {
     limit: number = 10,
     search: string = '',
     role?: UserRole,
-  ): Promise<PaginatedResponse<User>> {
+    groupId?: number,
+  ): Promise<PaginatedResponse<User & { groupName?: string }>> {
     const skip = (page - 1) * limit;
+
     const query = this.usersRepository
       .createQueryBuilder('user')
-      .select([
-        'user.id',
-        'user.username',
-        'user.role',
-        'user.firstName',
-        'user.lastName',
-      ])
-      .where('user.isActive = :isActive', { isActive: true })
-      .skip(skip)
-      .take(limit);
+      .leftJoin('user.enrollments', 'enrollment', 'enrollment.isActive = true')
+      .leftJoin('course_assignments', 'ca', 'ca.courseId = enrollment.courseId')
+      .leftJoin('groups', 'group', 'group.id = ca.groupId')
+      .where('user.isActive = :isActive', { isActive: true });
 
     if (search) {
       query.andWhere('user.username LIKE :search', { search: `%${search}%` });
@@ -45,12 +41,30 @@ export class UsersService {
       query.andWhere('user.role = :role', { role });
     }
 
-    const [users, total] = await query.getManyAndCount();
+    if (groupId) {
+      query.andWhere('group.id = :groupId', { groupId });
+    }
+
+    const total = await query.getCount();
+
+    const users = await query
+      .select([
+        'user.id AS id',
+        'user.username AS username',
+        'user.role AS role',
+        'user.firstName AS firstName',
+        'user.lastName AS lastName',
+        'group.name AS groupName',
+      ])
+      .skip(skip)
+      .take(limit)
+      .getRawMany();
 
     return {
       items: users,
       meta: {
         total,
+        totalItems: total,
         page,
         limit,
         totalPages: Math.ceil(total / limit),
