@@ -242,7 +242,14 @@ export class CourseService {
       throw new NotFoundException('استاد هیچ درسی ندارد');
     }
 
-    return courses;
+    return courses.map((course) => ({
+      id: course.id,
+      name: course.name,
+      groups: course.groups.map((group) => ({
+        id: group.id,
+        groupNumber: group.groupNumber,
+      })),
+    }));
   }
 
   async getCourseStudents(courseId: number) {

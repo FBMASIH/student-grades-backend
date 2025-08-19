@@ -57,8 +57,8 @@ export class CourseController {
     return this.coursesService.getStudentCourses(studentId);
   }
 
-  @Get('professor/:id')
-  getProfessorCourses(@Param('id') professorId: number) {
+  @Get('professor/:professorId')
+  getProfessorCourses(@Param('professorId') professorId: number) {
     return this.coursesService.getTeacherCourses(professorId);
   }
 
