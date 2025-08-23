@@ -23,7 +23,11 @@ export class GroupsService {
     return this.groupRepository.save(group);
   }
 
-  async findAll(
+  async getAll(): Promise<Group[]> {
+    return this.groupRepository.find({ select: ['id', 'name'] });
+  }
+
+  async findAllPaginated(
     page: number = 1,
     limit: number = 10,
     search?: string,

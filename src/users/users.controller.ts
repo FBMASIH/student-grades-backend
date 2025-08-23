@@ -61,7 +61,8 @@ export class UsersController {
     @Query('role') role?: UserRole,
     @Query('groupId') groupId?: number,
   ) {
-    return this.usersService.findAll(page, limit, search, role, groupId);
+    const parsedGroupId = groupId !== undefined ? Number(groupId) : undefined;
+    return this.usersService.findAll(page, limit, search, role, parsedGroupId);
   }
 
   @HasRoles(UserRole.ADMIN)
@@ -75,6 +76,7 @@ export class UsersController {
       firstName: string;
       lastName: string;
       role: UserRole;
+      groupId?: number;
     },
   ): Promise<User> {
     return this.usersService.createUser(
@@ -83,6 +85,7 @@ export class UsersController {
       body.firstName,
       body.lastName,
       body.role,
+      body.groupId,
     );
   }
 
@@ -109,12 +112,13 @@ export class UsersController {
   async uploadExcelUsers(
     @UploadedFile() file: Express.Multer.File,
     @Body('role') role: UserRole,
-    @Body('groupId', ParseIntPipe) groupId: number,
+    @Body('groupId') groupId?: number,
   ) {
+    const parsedGroupId = groupId !== undefined ? Number(groupId) : undefined;
     return this.usersService.importUsersWithResponseFromExcel(
       file,
       role,
-      groupId,
+      parsedGroupId,
     );
   }
 
@@ -137,7 +141,14 @@ export class UsersController {
   async updateUser(
     @Param('id') id: number,
     @Body()
-    updateData: { username?: string; password?: string; role?: UserRole },
+    updateData: {
+      username?: string;
+      password?: string;
+      role?: UserRole;
+      firstName?: string;
+      lastName?: string;
+      groupId?: number;
+    },
     @Req() req: Request,
   ) {
     const currentUser = req.user as User;
@@ -149,7 +160,12 @@ export class UsersController {
         'شما مجاز به تغییر اطلاعات این کاربر نیستید',
       );
     }
-    return this.usersService.updateUser(id, updateData, currentUser);
+    const parsedData = {
+      ...updateData,
+      groupId:
+        updateData.groupId !== undefined ? Number(updateData.groupId) : undefined,
+    };
+    return this.usersService.updateUser(id, parsedData, currentUser);
   }
 
   @Get('students/search')

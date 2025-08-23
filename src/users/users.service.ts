@@ -6,8 +6,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
-import { CourseGroup } from 'src/course-groups/entities/course-group.entity';
-import { Brackets, Repository, DeepPartial } from 'typeorm';
+import { Group } from 'src/groups/entities/group.entity';
+import { Brackets, Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { User, UserRole } from './entities/user.entity';
 
@@ -16,10 +16,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-    @InjectRepository(CourseGroup)
-    private courseGroupRepository: Repository<CourseGroup>,
-    @InjectRepository(Enrollment)
-    private enrollmentRepository: Repository<Enrollment>,
+    @InjectRepository(Group)
+    private groupRepository: Repository<Group>,
   ) {}
 
   async findAll(
@@ -33,9 +31,7 @@ export class UsersService {
 
     const query = this.usersRepository
       .createQueryBuilder('user')
-      .leftJoin('user.enrollments', 'enrollment', 'enrollment.isActive = true')
-      .leftJoin('course_assignments', 'ca', 'ca.courseId = enrollment.courseId')
-      .leftJoin('groups', 'group', 'group.id = ca.groupId')
+      .leftJoin('user.group', 'group')
       .where('user.isActive = :isActive', { isActive: true });
 
     if (search) {
@@ -84,6 +80,7 @@ export class UsersService {
     firstName: string,
     lastName: string,
     role: UserRole = UserRole.STUDENT,
+    groupId?: number,
   ): Promise<User> {
     const existing = await this.usersRepository.findOne({
       where: { username },
@@ -99,6 +96,15 @@ export class UsersService {
       lastName,
       role,
     });
+
+    if (groupId) {
+      const group = await this.groupRepository.findOne({ where: { id: groupId } });
+      if (!group) {
+        throw new BadRequestException('گروه یافت نشد');
+      }
+      user.group = group;
+    }
+
     return this.usersRepository.save(user);
   }
 
@@ -205,14 +211,9 @@ export class UsersService {
       throw new BadRequestException('نقش نامعتبر است');
     }
 
-    // If a groupId is provided, validate and load the group for enrollment
-    let group: CourseGroup | null = null;
+    let group: Group | null = null;
     if (groupId) {
-      group = await this.courseGroupRepository.findOne({
-        where: { id: groupId },
-        relations: ['course', 'professor'],
-      });
-
+      group = await this.groupRepository.findOne({ where: { id: groupId } });
       if (!group) {
         throw new BadRequestException('گروه یافت نشد');
       }
@@ -249,32 +250,6 @@ export class UsersService {
       })
       .filter(({ username, password }) => username && password);
 
-    const ensureEnrollment = async (user: User) => {
-      if (!group) return;
-
-      const existingEnrollment = await this.enrollmentRepository.findOne({
-        where: {
-          student: { id: user.id },
-          group: { id: group.id },
-          isActive: true,
-        },
-      });
-
-      if (!existingEnrollment) {
-        const enrollment = this.enrollmentRepository.create({
-          student: user,
-          group,
-          course: group.course,
-          courseId: group.courseId,
-          isActive: true,
-          createdById: group.professorId,
-          createdBy:
-            group.professor ?? ({ id: group.professorId } as User),
-        } as DeepPartial<Enrollment>);
-        await this.enrollmentRepository.save(enrollment);
-      }
-    };
-
     for (const userData of usersToImport) {
       try {
         const existingUser = await this.usersRepository.findOne({
@@ -288,9 +263,10 @@ export class UsersService {
             existingUser.firstName = userData.firstName;
             existingUser.lastName = userData.lastName;
             existingUser.role = role;
+            if (group) {
+              existingUser.group = group;
+            }
             await this.usersRepository.save(existingUser);
-
-            await ensureEnrollment(existingUser);
 
             result.reactivated.push({
               username: existingUser.username,
@@ -314,9 +290,8 @@ export class UsersService {
           userData.firstName,
           userData.lastName,
           role,
+          groupId,
         );
-
-        await ensureEnrollment(user);
 
         result.users.push(user);
       } catch (error: any) {
@@ -335,6 +310,7 @@ export class UsersService {
       firstName?: string;
       lastName?: string;
       role?: UserRole;
+      groupId?: number;
     },
     currentUser: User,
   ) {
@@ -378,6 +354,21 @@ export class UsersService {
     }
     if (data.lastName?.trim()) {
       user.lastName = data.lastName;
+    }
+
+    if (data.groupId !== undefined) {
+      if (data.groupId === null) {
+        user.group = undefined;
+        user.groupId = undefined;
+      } else {
+        const group = await this.groupRepository.findOne({
+          where: { id: data.groupId },
+        });
+        if (!group) {
+          throw new BadRequestException('گروه یافت نشد');
+        }
+        user.group = group;
+      }
     }
 
     await this.usersRepository.save(user);
