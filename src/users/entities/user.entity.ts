@@ -1,12 +1,15 @@
 import {
   Column,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   Repository,
 } from 'typeorm';
 import { Course } from '../../course/entities/course.entity';
 import { Enrollment } from '../../enrollment/entities/enrollment.entity';
+import { Group } from '../../groups/entities/group.entity';
 
 export enum UserRole {
   STUDENT = 'student',
@@ -51,6 +54,13 @@ export class User {
 
   @OneToMany(() => Course, (course) => course.professor)
   courses: Course[];
+
+  @ManyToOne(() => Group, { nullable: true })
+  @JoinColumn({ name: 'groupId' })
+  group?: Group;
+
+  @Column({ nullable: true })
+  groupId?: number;
 
   static createQueryBuilderWithInactive(repository: Repository<User>) {
     return repository.createQueryBuilder().withDeleted().where('1=1'); // This will bypass the default isActive filter

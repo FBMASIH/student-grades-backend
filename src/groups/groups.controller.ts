@@ -25,12 +25,17 @@ export class GroupsController {
   }
 
   @Get()
+  async getAll(): Promise<Group[]> {
+    return this.groupsService.getAll();
+  }
+
+  @Get('paginated')
   async findAll(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
     @Query('search') search?: string,
   ): Promise<PaginatedResponse<Group>> {
-    return this.groupsService.findAll(page, limit, search);
+    return this.groupsService.findAllPaginated(page, limit, search);
   }
 
   @Get(':id/assignments')
