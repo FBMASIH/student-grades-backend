@@ -10,10 +10,11 @@ import { AuthService } from 'src/auth/auth.service';
 import { User } from 'src/users/entities/user.entity';
 import { UsersService } from 'src/users/users.service';
 import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
+import { Group } from 'src/groups/entities/group.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Course, CourseGroup, User, Enrollment]),
+    TypeOrmModule.forFeature([Course, CourseGroup, User, Enrollment, Group]),
     CourseGroupsModule,
   ],
   controllers: [CourseController],
