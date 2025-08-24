@@ -7,6 +7,7 @@ import { ObjectionController } from './objection.controller';
 import { ObjectionService } from './objection.service';
 import { CourseGroup } from 'src/course-groups/entities/course-group.entity';
 import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
+import { Group } from 'src/groups/entities/group.entity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
       User,
       CourseGroup,
       Enrollment,
+      Group,
     ]),
   ],
   controllers: [ObjectionController],

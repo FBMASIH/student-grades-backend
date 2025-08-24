@@ -8,10 +8,17 @@ import { CourseAssignmentsController } from './course-assignments.controller';
 import { CourseAssignmentsService } from './course-assignments.service';
 import { CourseAssignment } from './entities/course-assignment.entity';
 import { CourseGroup } from 'src/course-groups/entities/course-group.entity';
+import { Group } from '../groups/entities/group.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CourseAssignment, User, Enrollment, CourseGroup]),
+    TypeOrmModule.forFeature([
+      CourseAssignment,
+      User,
+      Enrollment,
+      CourseGroup,
+      Group,
+    ]),
     MulterModule.register({
       limits: {
         fileSize: 5 * 1024 * 1024, // 5MB limit
