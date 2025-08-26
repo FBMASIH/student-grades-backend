@@ -5,13 +5,18 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { SubmitGroupScoresDto } from './dto/submit-group-scores.dto';
+import { UpdateGroupDto } from './dto/update-group.dto';
 import { Group } from './entities/group.entity';
 import { GroupsService } from './groups.service';
 
@@ -52,6 +57,14 @@ export class GroupsController {
     return this.groupsService.getStudentsByGroup(id);
   }
 
+  @Patch(':id')
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateGroupDto: UpdateGroupDto,
+  ): Promise<Group> {
+    return this.groupsService.update(id, updateGroupDto);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: number): Promise<{ message: string }> {
     return this.groupsService.remove(id);
@@ -66,5 +79,14 @@ export class GroupsController {
       groupId,
       submitGroupScoresDto.scores,
     );
+  }
+
+  @Post(':id/scores/upload-excel')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadScoresFromExcel(
+    @Param('id', ParseIntPipe) groupId: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.groupsService.uploadScoresFromExcel(groupId, file);
   }
 }

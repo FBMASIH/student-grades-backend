@@ -1,11 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
 import { Enrollment } from '../enrollment/entities/enrollment.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
+import { UpdateGroupDto } from './dto/update-group.dto';
 import { Group } from './entities/group.entity';
+import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class GroupsService {
@@ -25,6 +31,15 @@ export class GroupsService {
 
   async getAll(): Promise<Group[]> {
     return this.groupRepository.find({ select: ['id', 'name'] });
+  }
+
+  async update(id: number, updateGroupDto: UpdateGroupDto): Promise<Group> {
+    const group = await this.groupRepository.findOne({ where: { id } });
+    if (!group) {
+      throw new NotFoundException('Group not found');
+    }
+    group.name = updateGroupDto.name;
+    return this.groupRepository.save(group);
   }
 
   async findAllPaginated(
@@ -171,14 +186,39 @@ export class GroupsService {
         await this.enrollmentRepository.save(enrollment);
         results.successful++;
       } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to update score';
         results.failed++;
         results.errors.push({
           studentId: scoreData.studentId,
-          message: error.message || 'Failed to update score',
+          message,
         });
       }
     }
 
     return results;
+  }
+
+  async uploadScoresFromExcel(groupId: number, file: Express.Multer.File) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file.buffer);
+
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) {
+      throw new BadRequestException('Worksheet not found');
+    }
+
+    const scores: Array<{ studentId: number; score: number }> = [];
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const studentId = Number(row.getCell(1).value);
+      const score = Number(row.getCell(2).value);
+      if (!Number.isNaN(studentId) && !Number.isNaN(score)) {
+        scores.push({ studentId, score });
+      }
+    });
+
+    return this.submitGroupScores(groupId, scores);
   }
 }
