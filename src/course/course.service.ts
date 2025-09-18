@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
+import { buildPaginationMeta } from '../common/utils/pagination.util';
 import { CourseGroup } from '../course-groups/entities/course-group.entity';
 import { CreateCourseDto } from './dto/create-grade.dto';
 import { Course } from './entities/course.entity';
@@ -47,12 +48,7 @@ export class CourseService {
 
     return {
       items,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: buildPaginationMeta(total, page, limit, items.length),
     };
   }
 

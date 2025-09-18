@@ -7,6 +7,7 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { Comment } from './entities/comment.entity';
 import { Ticket } from './entities/ticket.entity';
+import { buildPaginationMeta } from '../common/utils/pagination.util';
 
 @Injectable()
 export class TicketsService {
@@ -51,12 +52,7 @@ export class TicketsService {
 
     return {
       items,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: buildPaginationMeta(total, page, limit, items.length),
     };
   }
 
@@ -180,12 +176,7 @@ export class TicketsService {
 
     return {
       items,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: buildPaginationMeta(total, page, limit, items.length),
     };
   }
 }

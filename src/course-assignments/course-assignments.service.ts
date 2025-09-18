@@ -4,6 +4,7 @@ import { CourseGroup } from 'src/course-groups/entities/course-group.entity';
 import { Course } from 'src/course/entities/course.entity';
 import { In, Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
+import { buildPaginationMeta } from '../common/utils/pagination.util';
 import { Enrollment } from '../enrollment/entities/enrollment.entity';
 import { User, UserRole } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
@@ -52,12 +53,7 @@ export class CourseAssignmentsService {
 
     return {
       items,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: buildPaginationMeta(total, page, limit, items.length),
     };
   }
 

@@ -1,4 +1,9 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity('groups')
 export class Group {
@@ -7,4 +12,7 @@ export class Group {
 
   @Column()
   name: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
 }

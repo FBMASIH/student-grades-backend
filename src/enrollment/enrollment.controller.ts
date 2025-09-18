@@ -17,6 +17,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { PaginatedResponse } from 'src/common/interfaces/pagination.interface';
+import { buildPaginationMeta } from 'src/common/utils/pagination.util';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { EnrollmentService } from './enrollment.service';
 import { EnrollmentResponse } from './interfaces/enrollment-response.interface';
@@ -131,12 +132,7 @@ export class EnrollmentController {
       if (error instanceof NotFoundException) {
         return {
           items: [],
-          meta: {
-            total: 0,
-            page,
-            limit,
-            totalPages: 0,
-          },
+          meta: buildPaginationMeta(0, page, limit, 0),
         };
       }
       throw error;
