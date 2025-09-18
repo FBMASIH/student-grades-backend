@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
+import { buildPaginationMeta } from '../common/utils/pagination.util';
 import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
 import { Enrollment } from '../enrollment/entities/enrollment.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -27,10 +28,6 @@ export class GroupsService {
   async create(createGroupDto: CreateGroupDto): Promise<Group> {
     const group = this.groupRepository.create(createGroupDto);
     return this.groupRepository.save(group);
-  }
-
-  async getAll(): Promise<Group[]> {
-    return this.groupRepository.find({ select: ['id', 'name'] });
   }
 
   async update(id: number, updateGroupDto: UpdateGroupDto): Promise<Group> {
@@ -67,12 +64,7 @@ export class GroupsService {
 
     return {
       items: groups,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages,
-      },
+      meta: buildPaginationMeta(total, page, limit, groups.length),
     };
   }
 
@@ -89,12 +81,7 @@ export class GroupsService {
 
     return {
       items,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: buildPaginationMeta(total, page, limit, items.length),
     };
   }
 
@@ -123,12 +110,26 @@ export class GroupsService {
       ])
       .getMany();
 
+    const mappedStudents = students.map((enrollment) => ({
+      id: enrollment.student.id,
+      username: enrollment.student.username,
+      firstName: enrollment.student.firstName,
+      lastName: enrollment.student.lastName,
+      isEnrolled: true,
+      canEnroll: true,
+      course: enrollment.course,
+      score: enrollment.score,
+    }));
+
     return {
-      students: students.map((enrollment) => ({
-        ...enrollment.student,
-        course: enrollment.course,
-        score: enrollment.score,
-      })),
+      students: mappedStudents,
+      groupInfo: {
+        id: groupId,
+        groupNumber: null,
+        courseName: null,
+        capacity: null,
+        currentEnrollment: mappedStudents.length,
+      },
     };
   }
 

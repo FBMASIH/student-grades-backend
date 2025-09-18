@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginatedResponse } from 'src/common/interfaces/pagination.interface';
+import { buildPaginationMeta } from 'src/common/utils/pagination.util';
 import { Repository } from 'typeorm';
 import { CourseAssignment } from 'src/course-assignments/entities/course-assignment.entity';
 import { Course } from '../course/entities/course.entity';
@@ -267,12 +268,7 @@ export class EnrollmentService {
 
     return {
       items,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages,
-      },
+      meta: buildPaginationMeta(total, page, limit, items.length),
     };
   }
 

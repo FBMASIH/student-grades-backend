@@ -9,6 +9,7 @@ import { Enrollment } from 'src/enrollment/entities/enrollment.entity';
 import { Group } from 'src/groups/entities/group.entity';
 import { Brackets, Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
+import { buildPaginationMeta } from '../common/utils/pagination.util';
 import { User, UserRole } from './entities/user.entity';
 
 @Injectable()
@@ -63,13 +64,7 @@ export class UsersService {
 
     return {
       items: users,
-      meta: {
-        total,
-        totalItems: total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: buildPaginationMeta(total, page, limit, users.length),
     };
   }
 
@@ -98,7 +93,9 @@ export class UsersService {
     });
 
     if (groupId) {
-      const group = await this.groupRepository.findOne({ where: { id: groupId } });
+      const group = await this.groupRepository.findOne({
+        where: { id: groupId },
+      });
       if (!group) {
         throw new BadRequestException('گروه یافت نشد');
       }

@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
-  NotFoundException,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -15,7 +17,9 @@ import { GetUser } from 'src/auth/decorators/get-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CourseGroupsService } from './course-groups.service';
 import { CreateCourseGroupDto } from './dto/create-course-group.dto';
+import { ManageStudentsDto } from './dto/manage-students.dto';
 import { UpdateCourseGroupDto } from './dto/update-course-group.dto';
+import { UsernamesDto } from './dto/usernames.dto';
 
 @Controller('course-groups')
 @UseGuards(JwtAuthGuard)
@@ -27,92 +31,100 @@ export class CourseGroupsController {
     return this.courseGroupsService.create(createCourseGroupDto);
   }
 
-  @Post(':groupId/enroll/:studentId')
-  enrollStudent(
-    @Param('groupId') groupId: string,
-    @Param('studentId') studentId: string,
-  ) {
-    return this.courseGroupsService.enrollStudent(+groupId, +studentId);
-  }
-
-  @Post(':groupId/students')
-  async addStudents(
-    @Param('groupId') groupId: string,
-    @Body() data: { studentIds: number[] },
-    @GetUser('id') userId: number,
-  ) {
-    return this.courseGroupsService.addStudents(
-      +groupId,
-      data.studentIds,
-      userId,
-    );
-  }
-
   @Get()
   findAll(
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Query('search') search?: string,
   ) {
     return this.courseGroupsService.findAll(page, limit, search);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.courseGroupsService.findOne(+id);
-  }
-
   @Get('course/:courseId')
-  findAvailableGroups(@Param('courseId') courseId: string) {
-    return this.courseGroupsService.findAvailableGroups(+courseId);
+  findAvailableGroups(@Param('courseId', ParseIntPipe) courseId: number) {
+    return this.courseGroupsService.findAvailableGroups(courseId);
   }
 
-  @Get(':groupId/students')
-  async getGroupStudents(@Param('groupId') groupId: string) {
-    return this.courseGroupsService.getGroupStudents(+groupId);
-  }
-
-  @Get(':groupId/students-status')
-  async getGroupStudentsStatus(@Param('groupId') groupId: string) {
-    return this.courseGroupsService.getGroupStudentsStatus(+groupId);
-  }
-
-  @Get(':id/students-status')
-  async getStudentsStatus(@Param('id', ParseIntPipe) id: number) {
-    const courseGroup = await this.courseGroupsService.findOne(id);
-    if (!courseGroup) {
-      throw new NotFoundException(`Course group with ID ${id} not found`);
-    }
-
-    // Implement logic to get students status
-    return this.courseGroupsService.getStudentsStatus(id);
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.courseGroupsService.findOne(id);
   }
 
   @Patch(':id')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateCourseGroupDto: UpdateCourseGroupDto,
   ) {
-    return this.courseGroupsService.update(+id, updateCourseGroupDto);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Patch(':id/professor')
-  updateProfessor(
-    @Param('id') id: number,
-    @Body() body: { professorId: number },
-  ) {
-    return this.courseGroupsService.updateProfessor(id, body.professorId);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Delete(':id/professor')
-  removeProfessor(@Param('id') id: number) {
-    return this.courseGroupsService.removeProfessor(id);
+    return this.courseGroupsService.update(id, updateCourseGroupDto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.courseGroupsService.remove(+id);
+  @HttpCode(HttpStatus.OK)
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.courseGroupsService.remove(id);
+  }
+
+  @Get(':groupId/students')
+  getGroupStudents(@Param('groupId', ParseIntPipe) groupId: number) {
+    return this.courseGroupsService.getGroupStudents(groupId);
+  }
+
+  @Post(':groupId/students')
+  addStudents(
+    @Param('groupId', ParseIntPipe) groupId: number,
+    @Body() manageStudentsDto: ManageStudentsDto,
+    @GetUser('id') userId: number,
+  ) {
+    return this.courseGroupsService.addStudents(
+      groupId,
+      manageStudentsDto.studentIds,
+      userId,
+    );
+  }
+
+  @Delete(':groupId/students')
+  @HttpCode(HttpStatus.OK)
+  removeStudents(
+    @Param('groupId', ParseIntPipe) groupId: number,
+    @Body() manageStudentsDto: ManageStudentsDto,
+  ) {
+    return this.courseGroupsService.removeStudents(
+      groupId,
+      manageStudentsDto.studentIds,
+    );
+  }
+
+  @Post(':groupId/students/usernames')
+  addStudentsByUsernames(
+    @Param('groupId', ParseIntPipe) groupId: number,
+    @Body() usernamesDto: UsernamesDto,
+    @GetUser('id') userId: number,
+  ) {
+    return this.courseGroupsService.addStudentsByUsernames(
+      groupId,
+      usernamesDto.usernames,
+      userId,
+    );
+  }
+
+  @Post(':groupId/bulk-enroll')
+  bulkEnroll(
+    @Param('groupId', ParseIntPipe) groupId: number,
+    @Body() usernamesDto: UsernamesDto,
+    @GetUser('id') userId: number,
+  ) {
+    return this.courseGroupsService.bulkEnroll(
+      groupId,
+      usernamesDto.usernames,
+      userId,
+    );
+  }
+
+  @Get(':groupId/available-students')
+  getAvailableStudents(
+    @Param('groupId', ParseIntPipe) groupId: number,
+    @Query('search') search?: string,
+  ) {
+    return this.courseGroupsService.getAvailableStudents(groupId, search);
   }
 }

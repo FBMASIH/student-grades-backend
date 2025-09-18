@@ -1,10 +1,12 @@
+export interface PaginationMeta {
+  totalItems: number;
+  itemCount: number;
+  itemsPerPage: number;
+  totalPages: number;
+  currentPage: number;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
-  meta: {
-    total: number;
-    totalItems?: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
+  meta: PaginationMeta;
 }

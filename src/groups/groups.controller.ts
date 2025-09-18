@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   Param,
@@ -30,14 +31,9 @@ export class GroupsController {
   }
 
   @Get()
-  async getAll(): Promise<Group[]> {
-    return this.groupsService.getAll();
-  }
-
-  @Get('paginated')
   async findAll(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Query('search') search?: string,
   ): Promise<PaginatedResponse<Group>> {
     return this.groupsService.findAllPaginated(page, limit, search);

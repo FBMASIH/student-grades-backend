@@ -23,6 +23,9 @@ export class CourseGroup {
   @Column({ default: 0 })
   currentEnrollment: number;
 
+  @Column({ type: 'int', nullable: true })
+  capacity: number | null;
+
   @ManyToOne(() => Course)
   @JoinColumn({ name: 'courseId' })
   course: Course;
@@ -31,10 +34,11 @@ export class CourseGroup {
   courseId: number;
 
   @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'professorId' })
   professor: User | null;
 
-  @Column()
-  professorId: number;
+  @Column({ nullable: true })
+  professorId: number | null;
 
   @OneToMany(() => Enrollment, (enrollment) => enrollment.group, {
     cascade: true,
