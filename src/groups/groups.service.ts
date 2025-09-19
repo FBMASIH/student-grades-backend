@@ -17,6 +17,17 @@ import { Course } from '../course/entities/course.entity';
 import { User, UserRole } from '../users/entities/user.entity';
 import * as ExcelJS from 'exceljs';
 
+type GroupStudentInfo = {
+  id: number;
+  username: string;
+  firstName: string;
+  lastName: string;
+  isEnrolled: boolean;
+  canEnroll: boolean;
+  course: Course | null;
+  score: number | null;
+};
+
 @Injectable()
 export class GroupsService {
   constructor(
@@ -57,7 +68,11 @@ export class GroupsService {
       .getMany();
   }
 
-  private mapUsersToGroupStudents(users: User[], course: Course | null) {
+  private mapUsersToGroupStudents(
+    users: User[],
+    course: Course | null,
+  ): GroupStudentInfo[] {
+
     return users.map((student) => ({
       id: student.id,
       username: student.username,
@@ -160,7 +175,7 @@ export class GroupsService {
           .getMany();
       }
 
-      const mappedEnrollments = enrollments
+      const mappedEnrollments: GroupStudentInfo[] = enrollments
         .filter((enrollment) => enrollment.student)
         .map((enrollment) => ({
           id: enrollment.student.id,
@@ -169,8 +184,8 @@ export class GroupsService {
           lastName: enrollment.student.lastName,
           isEnrolled: true,
           canEnroll: true,
-          course: enrollment.course,
-          score: enrollment.score,
+          course: enrollment.course ?? null,
+          score: typeof enrollment.score === 'number' ? enrollment.score : null,
         }));
 
       const enrollmentCount = mappedEnrollments.length;
@@ -228,18 +243,24 @@ export class GroupsService {
       .andWhere('student.isActive = true')
       .getMany();
 
-    const mappedStudents = students.map((enrollment) => ({
+    const mappedStudents: GroupStudentInfo[] = students.map((enrollment) => ({
       id: enrollment.student.id,
       username: enrollment.student.username,
       firstName: enrollment.student.firstName,
       lastName: enrollment.student.lastName,
       isEnrolled: true,
       canEnroll: true,
-      course: enrollment.course,
-      score: enrollment.score,
+      course: enrollment.course ?? null,
+      score: typeof enrollment.score === 'number' ? enrollment.score : null,
     }));
 
     const enrollmentCount = mappedStudents.length;
+
+    const courseAssignment = await this.courseAssignmentRepository.findOne({
+      where: { groupId },
+      relations: ['course'],
+    });
+
     let studentSummaries = mappedStudents;
 
     if (studentSummaries.length === 0) {
@@ -251,11 +272,6 @@ export class GroupsService {
         );
       }
     }
-
-    const courseAssignment = await this.courseAssignmentRepository.findOne({
-      where: { groupId },
-      relations: ['course'],
-    });
 
     const numericGroupNumber = Number(group.name);
     const groupNumber = Number.isFinite(numericGroupNumber)
