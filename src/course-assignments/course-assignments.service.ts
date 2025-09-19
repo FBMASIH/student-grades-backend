@@ -75,15 +75,22 @@ export class CourseAssignmentsService {
       throw new NotFoundException('Course assignment not found');
     }
 
-    const enrolledStudents = await this.enrollmentRepository
+    const enrolledStudentsQuery = this.enrollmentRepository
       .createQueryBuilder('enrollment')
       .leftJoinAndSelect('enrollment.student', 'student')
       .where('enrollment.courseId = :courseId', {
         courseId: assignment.courseId,
       })
       .andWhere('enrollment.isActive = true')
-      .andWhere('student.isActive = true')
-      .getMany();
+      .andWhere('student.isActive = true');
+
+    if (assignment.groupId) {
+      enrolledStudentsQuery.andWhere('enrollment.groupId = :groupId', {
+        groupId: assignment.groupId,
+      });
+    }
+
+    const enrolledStudents = await enrolledStudentsQuery.getMany();
 
     const availableStudents = await this.userRepository
       .createQueryBuilder('user')
@@ -121,16 +128,29 @@ export class CourseAssignmentsService {
       throw new NotFoundException('Course assignment not found');
     }
 
+    const enrollmentFilters = [
+      'SELECT DISTINCT student.id FROM enrollments enrollment',
+      'INNER JOIN users student ON student.id = enrollment.studentId',
+      'WHERE enrollment.courseId = :courseId',
+      'AND enrollment.isActive = true',
+    ];
+
+    const enrollmentParams: Record<string, unknown> = {
+      courseId: assignment.courseId,
+    };
+
+    if (assignment.groupId) {
+      enrollmentFilters.push('AND enrollment.groupId = :groupId');
+      enrollmentParams.groupId = assignment.groupId;
+    }
+
     const query = this.userRepository
       .createQueryBuilder('user')
       .where('user.role = :role', { role: UserRole.STUDENT })
       .andWhere('user.isActive = true')
       .andWhere(
-        'user.id NOT IN (' +
-          'SELECT DISTINCT student.id FROM enrollments enrollment ' +
-          'INNER JOIN users student ON student.id = enrollment.studentId ' +
-          'WHERE enrollment.courseId = :courseId AND enrollment.isActive = true)',
-        { courseId: assignment.courseId },
+        `user.id NOT IN (${enrollmentFilters.join(' ')})`,
+        enrollmentParams,
       );
 
     if (search) {
@@ -152,6 +172,16 @@ export class CourseAssignmentsService {
           throw new NotFoundException('Course assignment not found');
         }
 
+        const courseGroup = assignment.groupId
+          ? await manager.findOne(CourseGroup, {
+              where: { id: assignment.groupId },
+            })
+          : null;
+
+        if (assignment.groupId && !courseGroup) {
+          throw new NotFoundException('Course group not found');
+        }
+
         const results = {
           successful: [] as Array<{ id: number; username: string }>,
           errors: [] as Array<{ studentId: number; reason: string }>, // Changed id to studentId
@@ -171,10 +201,67 @@ export class CourseAssignmentsService {
               continue;
             }
 
+            const existingEnrollmentQuery = manager
+              .createQueryBuilder(Enrollment, 'enrollment')
+              .where('enrollment.studentId = :studentId', { studentId })
+              .andWhere('enrollment.courseId = :courseId', {
+                courseId: assignment.courseId,
+              })
+              .andWhere('enrollment.isActive = true');
+
+            if (courseGroup) {
+              existingEnrollmentQuery.andWhere(
+                'enrollment.groupId = :groupId',
+                {
+                  groupId: courseGroup.id,
+                },
+              );
+            } else {
+              existingEnrollmentQuery.andWhere('enrollment.groupId IS NULL');
+            }
+
+            const existingEnrollment = await existingEnrollmentQuery.getOne();
+
+            if (!existingEnrollment && courseGroup) {
+              const legacyEnrollment = await manager
+                .createQueryBuilder(Enrollment, 'legacyEnrollment')
+                .leftJoinAndSelect('legacyEnrollment.student', 'legacyStudent')
+                .where('legacyEnrollment.studentId = :studentId', {
+                  studentId,
+                })
+                .andWhere('legacyEnrollment.courseId = :courseId', {
+                  courseId: assignment.courseId,
+                })
+                .andWhere('legacyEnrollment.isActive = true')
+                .andWhere('legacyEnrollment.groupId IS NULL')
+                .getOne();
+
+              if (legacyEnrollment) {
+                legacyEnrollment.group = courseGroup;
+                legacyEnrollment.groupId = courseGroup.id;
+                await manager.save(legacyEnrollment);
+                results.successful.push({
+                  id: legacyEnrollment.student.id,
+                  username: legacyEnrollment.student.username,
+                });
+                continue;
+              }
+            }
+
+            if (existingEnrollment) {
+              results.errors.push({
+                studentId,
+                reason: 'Student already enrolled',
+              });
+              continue;
+            }
+
             const enrollment = manager.create(Enrollment, {
               student,
               courseId: assignment.courseId,
               course: assignment.course,
+              group: courseGroup,
+              groupId: courseGroup?.id ?? null,
               isActive: true,
               createdById: assignment.professorId,
               createdBy: assignment.professor,
@@ -210,6 +297,16 @@ export class CourseAssignmentsService {
           throw new NotFoundException('Course assignment not found');
         }
 
+        const courseGroup = assignment.groupId
+          ? await manager.findOne(CourseGroup, {
+              where: { id: assignment.groupId },
+            })
+          : null;
+
+        if (assignment.groupId && !courseGroup) {
+          throw new NotFoundException('Course group not found');
+        }
+
         const results = {
           successful: [] as number[],
           errors: [] as Array<{ studentId: number; reason: string }>, // Changed id to studentId
@@ -217,13 +314,43 @@ export class CourseAssignmentsService {
 
         for (const studentId of studentIds) {
           try {
-            const enrollment = await manager.findOne(Enrollment, {
-              where: {
-                student: { id: studentId },
+            const enrollmentQuery = manager
+              .createQueryBuilder(Enrollment, 'enrollment')
+              .where('enrollment.studentId = :studentId', { studentId })
+              .andWhere('enrollment.courseId = :courseId', {
                 courseId: assignment.courseId,
-                isActive: true,
-              },
-            });
+              })
+              .andWhere('enrollment.isActive = true');
+
+            if (courseGroup) {
+              enrollmentQuery.andWhere('enrollment.groupId = :groupId', {
+                groupId: courseGroup.id,
+              });
+            } else {
+              enrollmentQuery.andWhere('enrollment.groupId IS NULL');
+            }
+
+            let enrollment = await enrollmentQuery.getOne();
+
+            if (!enrollment && courseGroup) {
+              const legacyEnrollment = await manager
+                .createQueryBuilder(Enrollment, 'legacyEnrollment')
+                .where('legacyEnrollment.studentId = :studentId', {
+                  studentId,
+                })
+                .andWhere('legacyEnrollment.courseId = :courseId', {
+                  courseId: assignment.courseId,
+                })
+                .andWhere('legacyEnrollment.isActive = true')
+                .andWhere('legacyEnrollment.groupId IS NULL')
+                .getOne();
+
+              if (legacyEnrollment) {
+                legacyEnrollment.group = courseGroup;
+                legacyEnrollment.groupId = courseGroup.id;
+                enrollment = legacyEnrollment;
+              }
+            }
 
             if (!enrollment) {
               results.errors.push({
@@ -275,7 +402,7 @@ export class CourseAssignmentsService {
       .getManyAndCount();
 
     // Enhanced enrollment query with proper joins
-    const enrollments = await this.enrollmentRepository
+    const enrollmentQuery = this.enrollmentRepository
       .createQueryBuilder('enrollment')
       .leftJoinAndSelect('enrollment.course', 'course')
       .leftJoinAndSelect('enrollment.student', 'student')
@@ -284,7 +411,17 @@ export class CourseAssignmentsService {
         studentIds: students.map((s) => s.id),
       })
       .andWhere('enrollment.isActive = true')
-      .getMany();
+      .andWhere('enrollment.courseId = :courseId', {
+        courseId: assignment.courseId,
+      });
+
+    if (assignment.groupId) {
+      enrollmentQuery.andWhere('enrollment.groupId = :groupId', {
+        groupId: assignment.groupId,
+      });
+    }
+
+    const enrollments = await enrollmentQuery.getMany();
 
     // Group enrollments by student id for easier lookup
     const studentEnrollments = new Map();
@@ -340,7 +477,10 @@ export class CourseAssignmentsService {
       )
       .getMany();
 
-    const enrollments = await this.getEnrollments(assignment.courseId);
+    const enrollments = await this.getEnrollments(
+      assignment.courseId,
+      assignment.groupId ?? null,
+    );
     const enrollmentMap = new Map(enrollments.map((e) => [e.student.id, e]));
 
     return {
@@ -387,6 +527,16 @@ export class CourseAssignmentsService {
 
     return await this.courseAssignmentRepository.manager.transaction(
       async (manager) => {
+        const courseGroup = assignment.groupId
+          ? await manager.findOne(CourseGroup, {
+              where: { id: assignment.groupId },
+            })
+          : null;
+
+        if (assignment.groupId && !courseGroup) {
+          throw new NotFoundException('Course group not found');
+        }
+
         const importResult =
           await this.usersService.importUsersWithResponseFromExcel(file);
 
@@ -405,6 +555,8 @@ export class CourseAssignmentsService {
               student: user,
               courseId: assignment.courseId,
               course: assignment.course,
+              group: courseGroup,
+              groupId: courseGroup?.id ?? null,
               isActive: true,
               createdById: assignment.professorId,
               createdBy: assignment.professor,
@@ -471,8 +623,10 @@ export class CourseAssignmentsService {
           where: {
             student: { id: In(data.studentIds) },
             course: { id: In(data.courseIds) },
+            group: { id: data.groupId },
             isActive: true,
           },
+          relations: ['group', 'course', 'student'],
         });
 
         // Process each student-course combination
@@ -481,7 +635,10 @@ export class CourseAssignmentsService {
             try {
               // Check existing enrollment
               const hasEnrollment = existingEnrollments.some(
-                (e) => e.student.id === studentId && e.course.id === courseId,
+                (e) =>
+                  e.student.id === studentId &&
+                  e.course.id === courseId &&
+                  e.group?.id === data.groupId,
               );
 
               if (hasEnrollment) {
@@ -494,11 +651,38 @@ export class CourseAssignmentsService {
                 continue;
               }
 
+              const legacyEnrollment = await manager
+                .createQueryBuilder(Enrollment, 'legacyEnrollment')
+                .where('legacyEnrollment.studentId = :studentId', {
+                  studentId,
+                })
+                .andWhere('legacyEnrollment.courseId = :courseId', {
+                  courseId,
+                })
+                .andWhere('legacyEnrollment.isActive = true')
+                .andWhere('legacyEnrollment.groupId IS NULL')
+                .getOne();
+
+              if (legacyEnrollment) {
+                legacyEnrollment.group = { id: data.groupId } as CourseGroup;
+                legacyEnrollment.groupId = data.groupId;
+                await manager.save(legacyEnrollment);
+
+                results.enrollments.push({
+                  studentId,
+                  courseId,
+                  success: true,
+                });
+                continue;
+              }
+
               // Create enrollment
               const enrollment = manager.create(Enrollment, {
                 student: { id: studentId },
                 course: { id: courseId },
+                courseId,
                 group: { id: data.groupId },
+                groupId: data.groupId,
                 isActive: true,
               });
 
@@ -539,12 +723,22 @@ export class CourseAssignmentsService {
     return assignment;
   }
 
-  private async getEnrollments(courseId: number): Promise<Enrollment[]> {
-    return this.enrollmentRepository
+  private async getEnrollments(
+    courseId: number,
+    groupId: number | null,
+  ): Promise<Enrollment[]> {
+    const query = this.enrollmentRepository
       .createQueryBuilder('enrollment')
       .leftJoinAndSelect('enrollment.student', 'student')
       .where('enrollment.courseId = :courseId', { courseId })
-      .andWhere('enrollment.isActive = true')
-      .getMany();
+      .andWhere('enrollment.isActive = true');
+
+    if (groupId) {
+      query.andWhere('enrollment.groupId = :groupId', { groupId });
+    } else {
+      query.andWhere('enrollment.groupId IS NULL');
+    }
+
+    return query.getMany();
   }
 }

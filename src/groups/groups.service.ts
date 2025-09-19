@@ -95,7 +95,7 @@ export class GroupsService {
     });
 
     if (courseGroup) {
-      const enrollments = await this.enrollmentRepository
+      let enrollments = await this.enrollmentRepository
         .createQueryBuilder('enrollment')
         .leftJoinAndSelect('enrollment.student', 'student')
         .leftJoinAndSelect('enrollment.course', 'course')
@@ -104,16 +104,32 @@ export class GroupsService {
         .andWhere('student.isActive = true')
         .getMany();
 
-      const mappedEnrollments = enrollments.map((enrollment) => ({
-        id: enrollment.student.id,
-        username: enrollment.student.username,
-        firstName: enrollment.student.firstName,
-        lastName: enrollment.student.lastName,
-        isEnrolled: true,
-        canEnroll: true,
-        course: enrollment.course,
-        score: enrollment.score,
-      }));
+      if (enrollments.length === 0) {
+        enrollments = await this.enrollmentRepository
+          .createQueryBuilder('enrollment')
+          .leftJoinAndSelect('enrollment.student', 'student')
+          .leftJoinAndSelect('enrollment.course', 'course')
+          .where('enrollment.courseId = :courseId', {
+            courseId: courseGroup.courseId,
+          })
+          .andWhere('enrollment.isActive = true')
+          .andWhere('student.isActive = true')
+          .andWhere('enrollment.groupId IS NULL')
+          .getMany();
+      }
+
+      const mappedEnrollments = enrollments
+        .filter((enrollment) => enrollment.student)
+        .map((enrollment) => ({
+          id: enrollment.student.id,
+          username: enrollment.student.username,
+          firstName: enrollment.student.firstName,
+          lastName: enrollment.student.lastName,
+          isEnrolled: true,
+          canEnroll: true,
+          course: enrollment.course,
+          score: enrollment.score,
+        }));
 
       await this.courseGroupRepository.update(groupId, {
         currentEnrollment: mappedEnrollments.length,
