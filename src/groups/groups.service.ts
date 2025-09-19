@@ -72,6 +72,7 @@ export class GroupsService {
     users: User[],
     course: Course | null,
   ): GroupStudentInfo[] {
+
     return users.map((student) => ({
       id: student.id,
       username: student.username,
@@ -254,6 +255,7 @@ export class GroupsService {
     }));
 
     const enrollmentCount = mappedStudents.length;
+
     const courseAssignment = await this.courseAssignmentRepository.findOne({
       where: { groupId },
       relations: ['course'],
