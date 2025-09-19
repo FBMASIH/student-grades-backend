@@ -13,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { GetUser } from '../auth/decorators/get-user.decorator';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -20,6 +21,7 @@ import { SubmitGroupScoresDto } from './dto/submit-group-scores.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { Group } from './entities/group.entity';
 import { GroupsService } from './groups.service';
+import { UsernamesDto } from './dto/usernames.dto';
 
 @Controller('groups')
 export class GroupsController {
@@ -51,6 +53,19 @@ export class GroupsController {
   @Get(':id/students')
   async getStudentsByGroup(@Param('id', ParseIntPipe) id: number) {
     return this.groupsService.getStudentsByGroup(id);
+  }
+
+  @Post(':id/students/usernames')
+  async addStudentsByUsernames(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() usernamesDto: UsernamesDto,
+    @GetUser('id') userId: number,
+  ) {
+    return this.groupsService.addStudentsByUsernames(
+      id,
+      usernamesDto.usernames,
+      userId,
+    );
   }
 
   @Patch(':id')
