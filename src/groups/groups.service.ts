@@ -10,6 +10,8 @@ import { buildPaginationMeta } from '../common/utils/pagination.util';
 import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
 import { CourseGroup } from '../course-groups/entities/course-group.entity';
 import { Enrollment } from '../enrollment/entities/enrollment.entity';
+import { CourseGroupsService } from '../course-groups/course-groups.service';
+import { EnrollmentService } from '../enrollment/enrollment.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { Group } from './entities/group.entity';
@@ -41,7 +43,19 @@ export class GroupsService {
     private readonly courseGroupRepository: Repository<CourseGroup>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly courseGroupsService: CourseGroupsService,
+    private readonly enrollmentService: EnrollmentService,
   ) {}
+
+  private sanitizeUsernames(usernames: string[]): string[] {
+    return Array.from(
+      new Set(
+        usernames
+          .map((username) => username?.trim())
+          .filter((username): username is string => Boolean(username)),
+      ),
+    );
+  }
 
   private async loadActiveStudentsFromUsers(groupId?: number) {
     const baseQuery = this.userRepository
@@ -72,7 +86,6 @@ export class GroupsService {
     users: User[],
     course: Course | null,
   ): GroupStudentInfo[] {
-
     return users.map((student) => ({
       id: student.id,
       username: student.username,
@@ -290,6 +303,63 @@ export class GroupsService {
             : null,
         currentEnrollment: enrollmentCount,
       },
+    };
+  }
+
+  async addStudentsByUsernames(
+    groupId: number,
+    usernames: string[],
+    createdById: number,
+  ) {
+    if (!Array.isArray(usernames) || usernames.length === 0) {
+      throw new BadRequestException('لیست نام‌های کاربری نباید خالی باشد');
+    }
+
+    const sanitizedUsernames = this.sanitizeUsernames(usernames);
+
+    if (!sanitizedUsernames.length) {
+      throw new BadRequestException('نام کاربری معتبری ارسال نشده است');
+    }
+
+    const courseGroup = await this.courseGroupRepository.findOne({
+      where: { id: groupId, isActive: true },
+    });
+
+    if (courseGroup) {
+      return this.courseGroupsService.addStudentsByUsernames(
+        groupId,
+        sanitizedUsernames,
+        createdById,
+      );
+    }
+
+    const group = await this.groupRepository.findOne({
+      where: { id: groupId },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Group not found');
+    }
+
+    const courseAssignment = await this.courseAssignmentRepository.findOne({
+      where: { groupId },
+    });
+
+    if (!courseAssignment) {
+      throw new NotFoundException('Course assignment not found for group');
+    }
+
+    const enrollResult = await this.enrollmentService.enrollMultipleStudents(
+      courseAssignment.courseId,
+      sanitizedUsernames,
+      createdById,
+    );
+
+    const groupDetails = await this.getStudentsByGroup(groupId);
+
+    return {
+      ...enrollResult,
+      groupInfo: groupDetails.groupInfo,
     };
   }
 

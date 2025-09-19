@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
 import { CourseGroup } from '../course-groups/entities/course-group.entity';
+import { CourseGroupsModule } from '../course-groups/course-groups.module';
+import { EnrollmentModule } from '../enrollment/enrollment.module';
 import { Enrollment } from '../enrollment/entities/enrollment.entity';
 import { User } from '../users/entities/user.entity';
 import { Group } from './entities/group.entity';
@@ -10,6 +12,8 @@ import { GroupsService } from './groups.service';
 
 @Module({
   imports: [
+    CourseGroupsModule,
+    EnrollmentModule,
     TypeOrmModule.forFeature([
       Group,
       Enrollment,
