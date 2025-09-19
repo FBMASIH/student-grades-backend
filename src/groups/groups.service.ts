@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { buildPaginationMeta } from '../common/utils/pagination.util';
 import { CourseAssignment } from '../course-assignments/entities/course-assignment.entity';
+import { CourseGroup } from '../course-groups/entities/course-group.entity';
 import { Enrollment } from '../enrollment/entities/enrollment.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
@@ -23,6 +24,8 @@ export class GroupsService {
     private readonly courseAssignmentRepository: Repository<CourseAssignment>,
     @InjectRepository(Enrollment)
     private readonly enrollmentRepository: Repository<Enrollment>,
+    @InjectRepository(CourseGroup)
+    private readonly courseGroupRepository: Repository<CourseGroup>,
   ) {}
 
   async create(createGroupDto: CreateGroupDto): Promise<Group> {
@@ -86,6 +89,59 @@ export class GroupsService {
   }
 
   async getStudentsByGroup(groupId: number) {
+    const courseGroup = await this.courseGroupRepository.findOne({
+      where: { id: groupId, isActive: true },
+      relations: ['course'],
+    });
+
+    if (courseGroup) {
+      const enrollments = await this.enrollmentRepository
+        .createQueryBuilder('enrollment')
+        .leftJoinAndSelect('enrollment.student', 'student')
+        .leftJoinAndSelect('enrollment.course', 'course')
+        .where('enrollment.groupId = :groupId', { groupId })
+        .andWhere('enrollment.isActive = true')
+        .andWhere('student.isActive = true')
+        .getMany();
+
+      const mappedEnrollments = enrollments.map((enrollment) => ({
+        id: enrollment.student.id,
+        username: enrollment.student.username,
+        firstName: enrollment.student.firstName,
+        lastName: enrollment.student.lastName,
+        isEnrolled: true,
+        canEnroll: true,
+        course: enrollment.course,
+        score: enrollment.score,
+      }));
+
+      await this.courseGroupRepository.update(groupId, {
+        currentEnrollment: mappedEnrollments.length,
+      });
+
+      return {
+        students: mappedEnrollments,
+        groupInfo: {
+          id: courseGroup.id,
+          groupNumber: courseGroup.groupNumber,
+          courseName: courseGroup.course?.name ?? null,
+          capacity:
+            typeof courseGroup.capacity === 'number'
+              ? courseGroup.capacity
+              : null,
+          currentEnrollment: mappedEnrollments.length,
+        },
+      };
+    }
+
+    const group = await this.groupRepository.findOne({
+      where: { id: groupId },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Group not found');
+    }
+
     const students = await this.enrollmentRepository
       .createQueryBuilder('enrollment')
       .leftJoinAndSelect('enrollment.student', 'student')
@@ -96,18 +152,8 @@ export class GroupsService {
         'ca.courseId = course.id AND ca.groupId = :groupId',
         { groupId },
       )
-      .where('enrollment.isActive = :isActive', { isActive: true })
-      .andWhere('student.isActive = :isActive', { isActive: true })
-      .select([
-        'student.id',
-        'student.firstName',
-        'student.lastName',
-        'student.username',
-        'course.id',
-        'course.name',
-        'course.code',
-        'enrollment.score',
-      ])
+      .where('enrollment.isActive = true')
+      .andWhere('student.isActive = true')
       .getMany();
 
     const mappedStudents = students.map((enrollment) => ({
@@ -121,13 +167,26 @@ export class GroupsService {
       score: enrollment.score,
     }));
 
+    const courseAssignment = await this.courseAssignmentRepository.findOne({
+      where: { groupId },
+      relations: ['course'],
+    });
+
+    const numericGroupNumber = Number(group.name);
+    const groupNumber = Number.isFinite(numericGroupNumber)
+      ? numericGroupNumber
+      : null;
+
     return {
       students: mappedStudents,
       groupInfo: {
         id: groupId,
-        groupNumber: null,
-        courseName: null,
-        capacity: null,
+        groupNumber,
+        courseName: courseAssignment?.course?.name ?? null,
+        capacity:
+          typeof courseAssignment?.capacity === 'number'
+            ? courseAssignment.capacity
+            : null,
         currentEnrollment: mappedStudents.length,
       },
     };
