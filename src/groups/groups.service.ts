@@ -13,6 +13,8 @@ import { Enrollment } from '../enrollment/entities/enrollment.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { Group } from './entities/group.entity';
+import { Course } from '../course/entities/course.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 import * as ExcelJS from 'exceljs';
 
 @Injectable()
@@ -26,7 +28,47 @@ export class GroupsService {
     private readonly enrollmentRepository: Repository<Enrollment>,
     @InjectRepository(CourseGroup)
     private readonly courseGroupRepository: Repository<CourseGroup>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
+
+  private async loadActiveStudentsFromUsers(groupId?: number) {
+    const baseQuery = this.userRepository
+      .createQueryBuilder('student')
+      .where('student.role = :role', { role: UserRole.STUDENT })
+      .andWhere('student.isActive = true')
+      .orderBy('student.username', 'ASC');
+
+    if (typeof groupId === 'number') {
+      baseQuery.andWhere('student.groupId = :groupId', { groupId });
+    }
+
+    const students = await baseQuery.getMany();
+
+    if (students.length > 0 || typeof groupId !== 'number') {
+      return students;
+    }
+
+    return this.userRepository
+      .createQueryBuilder('student')
+      .where('student.role = :role', { role: UserRole.STUDENT })
+      .andWhere('student.isActive = true')
+      .orderBy('student.username', 'ASC')
+      .getMany();
+  }
+
+  private mapUsersToGroupStudents(users: User[], course: Course | null) {
+    return users.map((student) => ({
+      id: student.id,
+      username: student.username,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      isEnrolled: false,
+      canEnroll: true,
+      course,
+      score: null,
+    }));
+  }
 
   async create(createGroupDto: CreateGroupDto): Promise<Group> {
     const group = this.groupRepository.create(createGroupDto);
@@ -131,12 +173,26 @@ export class GroupsService {
           score: enrollment.score,
         }));
 
+      const enrollmentCount = mappedEnrollments.length;
+      let students = mappedEnrollments;
+
+      if (students.length === 0) {
+        const fallbackStudents =
+          await this.loadActiveStudentsFromUsers(groupId);
+        if (fallbackStudents.length > 0) {
+          students = this.mapUsersToGroupStudents(
+            fallbackStudents,
+            courseGroup.course ?? null,
+          );
+        }
+      }
+
       await this.courseGroupRepository.update(groupId, {
-        currentEnrollment: mappedEnrollments.length,
+        currentEnrollment: enrollmentCount,
       });
 
       return {
-        students: mappedEnrollments,
+        students,
         groupInfo: {
           id: courseGroup.id,
           groupNumber: courseGroup.groupNumber,
@@ -145,7 +201,7 @@ export class GroupsService {
             typeof courseGroup.capacity === 'number'
               ? courseGroup.capacity
               : null,
-          currentEnrollment: mappedEnrollments.length,
+          currentEnrollment: enrollmentCount,
         },
       };
     }
@@ -183,6 +239,19 @@ export class GroupsService {
       score: enrollment.score,
     }));
 
+    const enrollmentCount = mappedStudents.length;
+    let studentSummaries = mappedStudents;
+
+    if (studentSummaries.length === 0) {
+      const fallbackStudents = await this.loadActiveStudentsFromUsers(groupId);
+      if (fallbackStudents.length > 0) {
+        studentSummaries = this.mapUsersToGroupStudents(
+          fallbackStudents,
+          courseAssignment?.course ?? null,
+        );
+      }
+    }
+
     const courseAssignment = await this.courseAssignmentRepository.findOne({
       where: { groupId },
       relations: ['course'],
@@ -194,7 +263,7 @@ export class GroupsService {
       : null;
 
     return {
-      students: mappedStudents,
+      students: studentSummaries,
       groupInfo: {
         id: groupId,
         groupNumber,
@@ -203,7 +272,7 @@ export class GroupsService {
           typeof courseAssignment?.capacity === 'number'
             ? courseAssignment.capacity
             : null,
-        currentEnrollment: mappedStudents.length,
+        currentEnrollment: enrollmentCount,
       },
     };
   }
