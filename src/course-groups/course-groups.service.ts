@@ -424,12 +424,44 @@ export class CourseGroupsService {
       }));
 
     const currentEnrollment = students.length;
+    let studentSummaries = students;
+
+    if (studentSummaries.length === 0) {
+      const fallbackStudents = await this.userRepository
+        .createQueryBuilder('student')
+        .where('student.role = :role', { role: UserRole.STUDENT })
+        .andWhere('student.isActive = true')
+        .andWhere('student.groupId = :groupId', { groupId })
+        .orderBy('student.username', 'ASC')
+        .getMany();
+
+      let usersToMap = fallbackStudents;
+
+      if (usersToMap.length === 0) {
+        usersToMap = await this.userRepository
+          .createQueryBuilder('student')
+          .where('student.role = :role', { role: UserRole.STUDENT })
+          .andWhere('student.isActive = true')
+          .orderBy('student.username', 'ASC')
+          .getMany();
+      }
+
+      studentSummaries = usersToMap.map((student) => ({
+        id: student.id,
+        username: student.username,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        isEnrolled: false,
+        canEnroll: true,
+      }));
+    }
+
     await this.courseGroupRepository.update(groupId, {
       currentEnrollment,
     });
 
     return {
-      students,
+      students: studentSummaries,
       groupInfo: this.buildGroupInfo(group, currentEnrollment),
     };
   }
