@@ -10,6 +10,7 @@ import { buildPaginationMeta } from 'src/common/utils/pagination.util';
 import { Repository } from 'typeorm';
 import { CourseAssignment } from 'src/course-assignments/entities/course-assignment.entity';
 import { Course } from '../course/entities/course.entity';
+import { CourseGroup } from '../course-groups/entities/course-group.entity';
 import { User, UserRole } from '../users/entities/user.entity';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
@@ -23,6 +24,8 @@ export class EnrollmentService {
     private readonly enrollmentRepository: Repository<Enrollment>,
     @InjectRepository(CourseAssignment)
     private readonly courseAssignmentRepository: Repository<CourseAssignment>,
+    @InjectRepository(CourseGroup)
+    private readonly courseGroupRepository: Repository<CourseGroup>,
     @InjectRepository(Course)
     private courseRepository: Repository<Course>,
     @InjectRepository(User)
@@ -480,6 +483,16 @@ export class EnrollmentService {
       throw new NotFoundException('Course assignment not found');
     }
 
+    const courseGroup = assignment.groupId
+      ? await this.courseGroupRepository.findOne({
+          where: { id: assignment.groupId },
+        })
+      : null;
+
+    if (assignment.groupId && !courseGroup) {
+      throw new NotFoundException('Course group not found');
+    }
+
     const results = {
       successful: [] as Array<{ id: number; username: string }>,
       errors: [] as Array<{ id: number; reason: string }>,
@@ -496,13 +509,47 @@ export class EnrollmentService {
           continue;
         }
 
-        const existingEnrollment = await this.enrollmentRepository.findOne({
-          where: {
-            student: { id: studentId },
+        const existingEnrollmentQuery = this.enrollmentRepository
+          .createQueryBuilder('enrollment')
+          .where('enrollment.studentId = :studentId', { studentId })
+          .andWhere('enrollment.courseId = :courseId', {
             courseId: assignment.courseId,
-            isActive: true,
-          },
-        });
+          })
+          .andWhere('enrollment.isActive = true');
+
+        if (courseGroup) {
+          existingEnrollmentQuery.andWhere('enrollment.groupId = :groupId', {
+            groupId: courseGroup.id,
+          });
+        } else {
+          existingEnrollmentQuery.andWhere('enrollment.groupId IS NULL');
+        }
+
+        const existingEnrollment = await existingEnrollmentQuery.getOne();
+
+        if (!existingEnrollment && courseGroup) {
+          const legacyEnrollment = await this.enrollmentRepository
+            .createQueryBuilder('legacyEnrollment')
+            .leftJoinAndSelect('legacyEnrollment.student', 'legacyStudent')
+            .where('legacyEnrollment.studentId = :studentId', { studentId })
+            .andWhere('legacyEnrollment.courseId = :courseId', {
+              courseId: assignment.courseId,
+            })
+            .andWhere('legacyEnrollment.isActive = true')
+            .andWhere('legacyEnrollment.groupId IS NULL')
+            .getOne();
+
+          if (legacyEnrollment) {
+            legacyEnrollment.group = courseGroup;
+            legacyEnrollment.groupId = courseGroup.id;
+            await this.enrollmentRepository.save(legacyEnrollment);
+            results.successful.push({
+              id: legacyEnrollment.student.id,
+              username: legacyEnrollment.student.username,
+            });
+            continue;
+          }
+        }
 
         if (existingEnrollment) {
           results.errors.push({
@@ -516,6 +563,8 @@ export class EnrollmentService {
           student,
           courseId: assignment.courseId,
           course: assignment.course,
+          group: courseGroup,
+          groupId: courseGroup?.id ?? null,
           isActive: true,
           createdById: assignment.professorId,
           createdBy: assignment.professor,
@@ -544,6 +593,16 @@ export class EnrollmentService {
     if (!groupAssignment) {
       throw new NotFoundException('Group assignment not found');
     }
+    const courseGroup = groupAssignment.groupId
+      ? await this.courseGroupRepository.findOne({
+          where: { id: groupAssignment.groupId },
+        })
+      : null;
+
+    if (groupAssignment.groupId && !courseGroup) {
+      throw new NotFoundException('Course group not found');
+    }
+
     // Find the student
     const student = await this.userRepository.findOne({
       where: { id: studentId, isActive: true, role: UserRole.STUDENT },
@@ -559,13 +618,43 @@ export class EnrollmentService {
       throw new NotFoundException('Creator not found');
     }
     // Check for existing enrollment
-    const existing = await this.enrollmentRepository.findOne({
-      where: {
-        student: { id: studentId },
-        course: { id: groupAssignment.courseId },
-        isActive: true,
-      },
-    });
+    const existingQuery = this.enrollmentRepository
+      .createQueryBuilder('enrollment')
+      .where('enrollment.studentId = :studentId', { studentId })
+      .andWhere('enrollment.courseId = :courseId', {
+        courseId: groupAssignment.courseId,
+      })
+      .andWhere('enrollment.isActive = true');
+
+    if (courseGroup) {
+      existingQuery.andWhere('enrollment.groupId = :groupId', {
+        groupId: courseGroup.id,
+      });
+    } else {
+      existingQuery.andWhere('enrollment.groupId IS NULL');
+    }
+
+    let existing = await existingQuery.getOne();
+
+    if (!existing && courseGroup) {
+      const legacyEnrollment = await this.enrollmentRepository
+        .createQueryBuilder('legacyEnrollment')
+        .where('legacyEnrollment.studentId = :studentId', { studentId })
+        .andWhere('legacyEnrollment.courseId = :courseId', {
+          courseId: groupAssignment.courseId,
+        })
+        .andWhere('legacyEnrollment.isActive = true')
+        .andWhere('legacyEnrollment.groupId IS NULL')
+        .getOne();
+
+      if (legacyEnrollment) {
+        legacyEnrollment.group = courseGroup;
+        legacyEnrollment.groupId = courseGroup.id;
+        await this.enrollmentRepository.save(legacyEnrollment);
+        existing = legacyEnrollment;
+      }
+    }
+
     if (existing) {
       throw new BadRequestException('Student already enrolled in this group');
     }
@@ -574,6 +663,8 @@ export class EnrollmentService {
     enrollment.student = student;
     enrollment.course = groupAssignment.course;
     enrollment.courseId = groupAssignment.courseId;
+    enrollment.group = courseGroup;
+    enrollment.groupId = courseGroup?.id ?? null;
     enrollment.isActive = true;
     enrollment.createdById = createdById;
     enrollment.createdBy = creator;

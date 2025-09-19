@@ -382,26 +382,46 @@ export class CourseGroupsService {
   async getGroupStudents(groupId: number): Promise<GroupStudentsResponse> {
     const group = await this.courseGroupRepository.findOne({
       where: { id: groupId },
-      relations: ['course', 'enrollments', 'enrollments.student'],
+      relations: ['course'],
     });
 
     if (!group) {
       throw new NotFoundException('گروه درسی یافت نشد');
     }
 
-    const activeEnrollments =
-      group.enrollments?.filter((enrollment) => enrollment.isActive) ?? [];
+    const assignedEnrollments = await this.enrollmentRepository
+      .createQueryBuilder('enrollment')
+      .leftJoinAndSelect('enrollment.student', 'student')
+      .where('enrollment.groupId = :groupId', { groupId })
+      .andWhere('enrollment.isActive = true')
+      .andWhere('student.isActive = true')
+      .getMany();
 
-    const students: GroupStudentSummary[] = activeEnrollments.map(
-      (enrollment) => ({
+    let activeEnrollments = assignedEnrollments;
+
+    if (activeEnrollments.length === 0) {
+      activeEnrollments = await this.enrollmentRepository
+        .createQueryBuilder('enrollment')
+        .leftJoinAndSelect('enrollment.student', 'student')
+        .where('enrollment.courseId = :courseId', {
+          courseId: group.courseId,
+        })
+        .andWhere('enrollment.isActive = true')
+        .andWhere('student.isActive = true')
+        .andWhere('enrollment.groupId IS NULL')
+        .getMany();
+    }
+
+    const students: GroupStudentSummary[] = activeEnrollments
+      .filter((enrollment) => enrollment.student)
+      .map((enrollment) => ({
         id: enrollment.student.id,
         username: enrollment.student.username,
         firstName: enrollment.student.firstName,
         lastName: enrollment.student.lastName,
         isEnrolled: true,
         canEnroll: false,
-      }),
-    );
+      }));
 
     const currentEnrollment = students.length;
     await this.courseGroupRepository.update(groupId, {

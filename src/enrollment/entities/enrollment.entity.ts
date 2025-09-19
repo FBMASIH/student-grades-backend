@@ -32,8 +32,14 @@ export class Enrollment {
   @JoinColumn({ name: 'courseId' })
   course: Course;
 
-  @ManyToOne(() => CourseGroup, (courseGroup) => courseGroup.enrollments)
-  group: CourseGroup;
+  @ManyToOne(() => CourseGroup, (courseGroup) => courseGroup.enrollments, {
+    nullable: true,
+  })
+  @JoinColumn({ name: 'groupId' })
+  group: CourseGroup | null;
+
+  @Column({ nullable: true })
+  groupId: number | null;
 
   @Column({ nullable: true, type: 'float' })
   score: number;
