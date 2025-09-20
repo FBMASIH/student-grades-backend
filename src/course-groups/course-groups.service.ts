@@ -367,7 +367,7 @@ export class CourseGroupsService {
       await manager
         .createQueryBuilder()
         .update(Enrollment)
-        .set({ isActive: false })
+        .set({ isActive: false, groupId: null })
         .where('groupId = :groupId', { groupId: id })
         .execute();
 
@@ -395,73 +395,98 @@ export class CourseGroupsService {
       .where('enrollment.groupId = :groupId', { groupId })
       .andWhere('enrollment.isActive = true')
       .andWhere('student.isActive = true')
+      .orderBy('student.username', 'ASC')
       .getMany();
 
-    let activeEnrollments = assignedEnrollments;
+    const students: GroupStudentSummary[] = [];
+    const assignedStudentIds = new Set<number>();
 
-    if (activeEnrollments.length === 0) {
-      activeEnrollments = await this.enrollmentRepository
-        .createQueryBuilder('enrollment')
-        .leftJoinAndSelect('enrollment.student', 'student')
-        .where('enrollment.courseId = :courseId', {
-          courseId: group.courseId,
-        })
-        .andWhere('enrollment.isActive = true')
-        .andWhere('student.isActive = true')
-        .andWhere('enrollment.groupId IS NULL')
-        .getMany();
-    }
+    for (const enrollment of assignedEnrollments) {
+      if (!enrollment.student) {
+        continue;
+      }
 
-    const students: GroupStudentSummary[] = activeEnrollments
-      .filter((enrollment) => enrollment.student)
-      .map((enrollment) => ({
+      assignedStudentIds.add(enrollment.student.id);
+      students.push({
         id: enrollment.student.id,
         username: enrollment.student.username,
         firstName: enrollment.student.firstName,
         lastName: enrollment.student.lastName,
         isEnrolled: true,
         canEnroll: false,
-      }));
+      });
+    }
 
     const currentEnrollment = students.length;
-    let studentSummaries = students;
+    const canAcceptMore =
+      typeof group.capacity === 'number' && group.capacity > 0
+        ? currentEnrollment < group.capacity
+        : true;
 
-    if (studentSummaries.length === 0) {
+    const availableEnrollments = await this.enrollmentRepository
+      .createQueryBuilder('enrollment')
+      .leftJoinAndSelect('enrollment.student', 'student')
+      .where('enrollment.courseId = :courseId', {
+        courseId: group.courseId,
+      })
+      .andWhere('enrollment.isActive = true')
+      .andWhere('student.isActive = true')
+      .andWhere('enrollment.groupId IS NULL')
+      .orderBy('student.username', 'ASC')
+      .getMany();
+
+    for (const enrollment of availableEnrollments) {
+      if (
+        !enrollment.student ||
+        assignedStudentIds.has(enrollment.student.id)
+      ) {
+        continue;
+      }
+
+      students.push({
+        id: enrollment.student.id,
+        username: enrollment.student.username,
+        firstName: enrollment.student.firstName,
+        lastName: enrollment.student.lastName,
+        isEnrolled: false,
+        canEnroll: canAcceptMore,
+      });
+    }
+
+    if (students.length === 0) {
       const fallbackStudents = await this.userRepository
         .createQueryBuilder('student')
         .where('student.role = :role', { role: UserRole.STUDENT })
         .andWhere('student.isActive = true')
-        .andWhere('student.groupId = :groupId', { groupId })
         .orderBy('student.username', 'ASC')
         .getMany();
 
-      let usersToMap = fallbackStudents;
+      for (const student of fallbackStudents) {
+        students.push({
+          id: student.id,
+          username: student.username,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          isEnrolled: false,
+          canEnroll: canAcceptMore,
+        });
+      }
+    }
 
-      if (usersToMap.length === 0) {
-        usersToMap = await this.userRepository
-          .createQueryBuilder('student')
-          .where('student.role = :role', { role: UserRole.STUDENT })
-          .andWhere('student.isActive = true')
-          .orderBy('student.username', 'ASC')
-          .getMany();
+    students.sort((a, b) => {
+      if (a.isEnrolled !== b.isEnrolled) {
+        return a.isEnrolled ? -1 : 1;
       }
 
-      studentSummaries = usersToMap.map((student) => ({
-        id: student.id,
-        username: student.username,
-        firstName: student.firstName,
-        lastName: student.lastName,
-        isEnrolled: false,
-        canEnroll: true,
-      }));
-    }
+      return a.username.localeCompare(b.username);
+    });
 
     await this.courseGroupRepository.update(groupId, {
       currentEnrollment,
     });
 
     return {
-      students: studentSummaries,
+      students,
       groupInfo: this.buildGroupInfo(group, currentEnrollment),
     };
   }
