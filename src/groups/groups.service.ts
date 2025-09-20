@@ -165,32 +165,26 @@ export class GroupsService {
     });
 
     if (courseGroup) {
-      let enrollments = await this.enrollmentRepository
+      const enrollments = await this.enrollmentRepository
         .createQueryBuilder('enrollment')
         .leftJoinAndSelect('enrollment.student', 'student')
         .leftJoinAndSelect('enrollment.course', 'course')
         .where('enrollment.groupId = :groupId', { groupId })
         .andWhere('enrollment.isActive = true')
         .andWhere('student.isActive = true')
+        .orderBy('student.username', 'ASC')
         .getMany();
 
-      if (enrollments.length === 0) {
-        enrollments = await this.enrollmentRepository
-          .createQueryBuilder('enrollment')
-          .leftJoinAndSelect('enrollment.student', 'student')
-          .leftJoinAndSelect('enrollment.course', 'course')
-          .where('enrollment.courseId = :courseId', {
-            courseId: courseGroup.courseId,
-          })
-          .andWhere('enrollment.isActive = true')
-          .andWhere('student.isActive = true')
-          .andWhere('enrollment.groupId IS NULL')
-          .getMany();
-      }
+      const students: GroupStudentInfo[] = [];
+      const assignedStudentIds = new Set<number>();
 
-      const mappedEnrollments: GroupStudentInfo[] = enrollments
-        .filter((enrollment) => enrollment.student)
-        .map((enrollment) => ({
+      for (const enrollment of enrollments) {
+        if (!enrollment.student) {
+          continue;
+        }
+
+        assignedStudentIds.add(enrollment.student.id);
+        students.push({
           id: enrollment.student.id,
           username: enrollment.student.username,
           firstName: enrollment.student.firstName,
@@ -199,21 +193,72 @@ export class GroupsService {
           canEnroll: true,
           course: enrollment.course ?? null,
           score: typeof enrollment.score === 'number' ? enrollment.score : null,
-        }));
+        });
+      }
 
-      const enrollmentCount = mappedEnrollments.length;
-      let students = mappedEnrollments;
+      const enrollmentCount = students.length;
+      const canAcceptMore =
+        typeof courseGroup.capacity === 'number' && courseGroup.capacity > 0
+          ? enrollmentCount < courseGroup.capacity
+          : true;
+
+      const availableEnrollments = await this.enrollmentRepository
+        .createQueryBuilder('enrollment')
+        .leftJoinAndSelect('enrollment.student', 'student')
+        .leftJoinAndSelect('enrollment.course', 'course')
+        .where('enrollment.courseId = :courseId', {
+          courseId: courseGroup.courseId,
+        })
+        .andWhere('enrollment.isActive = true')
+        .andWhere('student.isActive = true')
+        .andWhere('enrollment.groupId IS NULL')
+        .orderBy('student.username', 'ASC')
+        .getMany();
+
+      for (const enrollment of availableEnrollments) {
+        if (
+          !enrollment.student ||
+          assignedStudentIds.has(enrollment.student.id)
+        ) {
+          continue;
+        }
+
+        students.push({
+          id: enrollment.student.id,
+          username: enrollment.student.username,
+          firstName: enrollment.student.firstName,
+          lastName: enrollment.student.lastName,
+          isEnrolled: false,
+          canEnroll: canAcceptMore,
+          course: enrollment.course ?? courseGroup.course ?? null,
+          score: typeof enrollment.score === 'number' ? enrollment.score : null,
+        });
+      }
 
       if (students.length === 0) {
         const fallbackStudents =
           await this.loadActiveStudentsFromUsers(groupId);
         if (fallbackStudents.length > 0) {
-          students = this.mapUsersToGroupStudents(
+          const mappedStudents = this.mapUsersToGroupStudents(
             fallbackStudents,
             courseGroup.course ?? null,
           );
+          for (const student of mappedStudents) {
+            students.push({
+              ...student,
+              canEnroll: canAcceptMore,
+            });
+          }
         }
       }
+
+      students.sort((a, b) => {
+        if (a.isEnrolled !== b.isEnrolled) {
+          return a.isEnrolled ? -1 : 1;
+        }
+
+        return a.username.localeCompare(b.username);
+      });
 
       await this.courseGroupRepository.update(groupId, {
         currentEnrollment: enrollmentCount,
@@ -268,23 +313,79 @@ export class GroupsService {
     }));
 
     const enrollmentCount = mappedStudents.length;
-
     const courseAssignment = await this.courseAssignmentRepository.findOne({
       where: { groupId },
       relations: ['course'],
     });
 
-    let studentSummaries = mappedStudents;
+    const studentSummaries: GroupStudentInfo[] = [...mappedStudents];
+    const assignedStudentIds = new Set(
+      mappedStudents.map((student) => student.id),
+    );
+    const canAcceptMore =
+      typeof courseAssignment?.capacity === 'number' &&
+      courseAssignment.capacity > 0
+        ? enrollmentCount < courseAssignment.capacity
+        : true;
+
+    if (courseAssignment?.courseId) {
+      const availableEnrollments = await this.enrollmentRepository
+        .createQueryBuilder('enrollment')
+        .leftJoinAndSelect('enrollment.student', 'student')
+        .leftJoinAndSelect('enrollment.course', 'course')
+        .where('enrollment.courseId = :courseId', {
+          courseId: courseAssignment.courseId,
+        })
+        .andWhere('enrollment.isActive = true')
+        .andWhere('student.isActive = true')
+        .andWhere('enrollment.groupId IS NULL')
+        .orderBy('student.username', 'ASC')
+        .getMany();
+
+      for (const enrollment of availableEnrollments) {
+        if (
+          !enrollment.student ||
+          assignedStudentIds.has(enrollment.student.id)
+        ) {
+          continue;
+        }
+
+        studentSummaries.push({
+          id: enrollment.student.id,
+          username: enrollment.student.username,
+          firstName: enrollment.student.firstName,
+          lastName: enrollment.student.lastName,
+          isEnrolled: false,
+          canEnroll: canAcceptMore,
+          course: enrollment.course ?? courseAssignment.course ?? null,
+          score: typeof enrollment.score === 'number' ? enrollment.score : null,
+        });
+      }
+    }
 
     if (studentSummaries.length === 0) {
       const fallbackStudents = await this.loadActiveStudentsFromUsers(groupId);
       if (fallbackStudents.length > 0) {
-        studentSummaries = this.mapUsersToGroupStudents(
+        const mappedFallback = this.mapUsersToGroupStudents(
           fallbackStudents,
           courseAssignment?.course ?? null,
         );
+        for (const student of mappedFallback) {
+          studentSummaries.push({
+            ...student,
+            canEnroll: canAcceptMore,
+          });
+        }
       }
     }
+
+    studentSummaries.sort((a, b) => {
+      if (a.isEnrolled !== b.isEnrolled) {
+        return a.isEnrolled ? -1 : 1;
+      }
+
+      return a.username.localeCompare(b.username);
+    });
 
     const numericGroupNumber = Number(group.name);
     const groupNumber = Number.isFinite(numericGroupNumber)
